@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import ABPUtils as abp
+#import ABPUtils as abp
 import networkx as nx
 import numpy as np
 import LocalAssembly
