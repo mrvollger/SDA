@@ -20,12 +20,14 @@ blasrDir = '~mchaisso/projects/blasr-repo/blasr'
 scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
 #base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
+utils="/net/eichler/vol2/home/mvollger/projects/utility"
 
 #settings
 MINCOV = int(os.environ.get("MINCOV", "30"))
 MAXCOV = int(os.environ.get("MAXCOV", "50"))
 # only consider collapsed sites
 MINTOTAL = int(os.environ.get("MINTOTAL", "100"))
+CMPTOREF = os.environ.get("CMPTOREF", "TRUE")
 #MINCOV=30
 #MAXCOV=50
 #MINTOTAL=100
@@ -40,22 +42,36 @@ rule master:
 # likely to align a PSV as a mismatch rather than paired insertion and
 # deletion.
 #
-rule preprocess_reads:
-    input:
-        'reads.orig.bam'
-    output:
-        'reads.bas.h5'
-    shell:
-        'samtools view -h {input} | {blasrDir}/pbihdfutils/bin/samtobas /dev/stdin {output}'
+if(os.path.exists("reads.orig.bam")):
+    rule preprocess_reads:
+        input:
+            'reads.orig.bam'
+        output:
+            'reads.bas.h5'
+        shell:
+            'samtools view -h {input} | {blasrDir}/pbihdfutils/bin/samtobas /dev/stdin {output}'
 
-rule realign_reads:
-    input:
-        basreads='reads.bas.h5', 
-        ref='ref.fasta'
-    output:
-        "reads.bam"
-    shell: 
-        '{blasr} {input.basreads} {input.ref} -sam  -mismatch 3 -insertion 9 -deletion 9 -nproc 4 -out /dev/stdout -minMapQV 30 -minAlignLength 2000 -preserveReadTitle | samtools view -bS - | samtools sort -T tmp -o {output}'
+    rule realign_reads:
+        input:
+            basreads='reads.bas.h5', 
+            ref='ref.fasta'
+        output:
+            "reads.bam"
+        shell: 
+            '{blasr} {input.basreads} {input.ref} -sam  -mismatch 3 -insertion 9 -deletion 9 -nproc 4 -out /dev/stdout -minMapQV 30 -minAlignLength 2000 -preserveReadTitle | samtools view -bS - | samtools sort -T tmp -o {output}'
+
+elif(os.path.exists("reads.orig.fasta")):
+    rule realign_reads_fasta:
+        input:
+            basreads='reads.orig.fasta', 
+            ref='ref.fasta'
+        output:
+            "reads.bam"
+        shell: 
+            '{blasr} {input.basreads} {input.ref} -sam  -mismatch 3 -insertion 9 -deletion 9 -nproc 4 -out /dev/stdout -minMapQV 30 -minAlignLength 500 -preserveReadTitle | samtools view -bS - | samtools sort -T tmp -o {output}'
+
+else:
+    print("NO INPUT READS!!!")
 
 rule index_realigned_reads:
 	input:
@@ -65,6 +81,38 @@ rule index_realigned_reads:
 	shell:
 		'samtools index {input}'	
 
+#
+#
+# get a depth profile and reads in a fasta format
+#
+rule reads_to_fasta:
+    input:
+        "reads.bam"
+    output:
+        "reads.fasta"
+    shell:
+        '''samtools view {input} | awk '{{ print ">"$1; print $10; }}' > {output}'''
+
+rule depthFromBam:
+    input:
+        reads="reads.fasta",
+        bam="reads.bam",
+    output:
+        depth="depth.tsv"
+    shell:
+        """
+        samtools depth -aa {input.bam} > {output.depth}
+        """
+
+rule depthProfile:
+    input:
+        depth="depth.tsv"
+    output:
+        png="depthProfile.png"
+    shell:
+        """
+        {utils}/plotDepth.py {input.depth} {output.png}
+        """
 
 #
 # Given the alignments, count the frequency of each base at every
@@ -73,6 +121,7 @@ rule index_realigned_reads:
 #echo "{scriptsDir}/BamToSNVTable.sh reads.bam ref.fasta MINCOV" ??? what is this for ??? 
 rule create_SNVtable_from_reads:
     input:
+        png="depthProfile.png",
         reads="reads.bam",
         ref="ref.fasta"	
     output: 
@@ -144,71 +193,60 @@ rule duplicationsFasta3:
 MAX_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.max_identity.bed"
 MEAN_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.mean_identity.bed"
 
-rule reads_to_fasta:
-    input:
-        "reads.bam"
-    output:
-        "reads.fasta"
-    shell:
-        '''samtools view {input} | awk '{{ print ">"$1; print $10; }}' > {output}'''
+if( os.path.getsize("duplications.fasta") > 0 ):
+    rule realignReads_to_Dups:
+        input:
+            "reads.fasta",
+            "duplications.fasta"
+        output:
+            "reads.dups.m4"
+        shell:
+            '{blasr} {input} -m 4 -bestn 1 -preserveReadTitle -out {output} -nproc 4'
 
-rule realignReads_to_Dups:
-    input:
-        "reads.fasta",
-        "duplications.fasta"
-    output:
-        "reads.dups.m4"
-    shell:
-        '{blasr} {input} -m 4 -bestn 1 -preserveReadTitle -out {output} -nproc 4'
+    rule orderMatByalignments: #get more explanation
+        input:
+            "assembly.consensus.fragments.snv.mat",
+            "reads.dups.m4"
+        output:
+            "assembly.consensus.fragments.snv.mat.categorized"
+        shell:
+            '{scriptsDir}/sorting/OrderMatByAlignments.py {input}  > {output}'
 
-rule orderMatByalignments: #get more explanation
-    input:
-        "assembly.consensus.fragments.snv.mat",
-        "reads.dups.m4"
-    output:
-        "assembly.consensus.fragments.snv.mat.categorized"
-    shell:
-        '{scriptsDir}/sorting/OrderMatByAlignments.py {input}  > {output}'
+    rule fastaToBed:
+        input: "duplications.fasta"
+        output: "duplications.bed"
+        run:
+            fasta = list(SeqIO.parse("duplications.fasta", "fasta"))
+            rtn = ""
+            for rec in fasta:
+                temp = rec.id.split(":")
+                chro = temp[0]
+                nums = temp[1].split("-")
+                start = nums[0]
+                end   = nums[1]
+                rtn += "{}\t{}\t{}\n".format(chro, start, end)
+            f = open(output[0], "w+")
+            f.write(rtn)
+            f.close()
 
-rule fastaToBed:
-    input: "duplications.fasta"
-    output: "duplications.bed"
-    run:
-        fasta = list(SeqIO.parse("duplications.fasta", "fasta"))
-        rtn = ""
-        for rec in fasta:
-            temp = rec.id.split(":")
-            chro = temp[0]
-            nums = temp[1].split("-")
-            start = nums[0]
-            end   = nums[1]
-            rtn += "{}\t{}\t{}\n".format(chro, start, end)
-        f = open(output[0], "w+")
-        f.write(rtn)
-        f.close()
+    rule sortBed:
+        input: "duplications.bed"
+        output: "duplications.sorted.bed"
+        shell:
+            '''
+            bedtools sort -i {input} > {output}
+            '''
 
-rule sortBed:
-    input: "duplications.bed"
-    output: "duplications.sorted.bed"
-    shell:
-        '''
-        bedtools sort -i {input} > {output}
-        '''
-
-rule intersectBed:
-    input: "duplications.sorted.bed"
-    output:
-        maxx = "dup_max.intersect",
-        mean = "dup_mean.intersect"
-    shell:
-        '''
-        bedtools intersect -a {input} -b {MAX_SEGDUPS}  -wa -wb > {output.maxx}
-        bedtools intersect -a {input} -b {MEAN_SEGDUPS} -wa -wb > {output.mean}
-        '''
-
-#if os.path.exists("duplications.fasta"):
-if True:
-    x="this is a palcehold in canse I need to put back in the conditional duplicaitons.fasta"
+    rule intersectBed:
+        input: "duplications.sorted.bed"
+        output:
+            maxx = "dup_max.intersect",
+            mean = "dup_mean.intersect"
+        shell:
+            '''
+            bedtools intersect -a {input} -b {MAX_SEGDUPS}  -wa -wb > {output.maxx}
+            bedtools intersect -a {input} -b {MEAN_SEGDUPS} -wa -wb > {output.mean}
+            '''
 else:
     rule ifNoDuplicationsFasta:
         input:
@@ -264,6 +302,8 @@ rule correlationClustering:
 	shell:
 		'{scriptsDir}/MinDisagreeCluster.py --graph {input.graph} --cuts {output.cuts} --sites {output.sites} --factor 2 --swap 1000 --plot {output.plt} --out {output.out}'
 
+
+
 rule index_ref_fasta:
 	input:
 		"ref.fasta"
@@ -271,8 +311,6 @@ rule index_ref_fasta:
 		"ref.fasta.fai"
 	shell:
 		'samtools faidx {input}'
-
-
 
 
 #
@@ -293,6 +331,21 @@ rule makeCutsInPSVgraph:
 
 
 #
+# makes a gephi version of the plot, 
+# much nice imo 
+#
+rule gephi:
+    input:
+        cuts='mi.cuts.gml'
+    output:
+        pdf='mi.cuts.gml.pdf'
+    shell:
+        '''
+        {base2}/gephi/gephi.sh
+        '''
+
+
+#
 # dynamic wildcards are grabing this across multiple directoeis, and there is no way I can figure out to 
 # stop it from doing that so I made a second file so I dont have to use dynamic, this second snakemake file
 # must be called by a master script or seperatly.
@@ -301,6 +354,7 @@ rule startPSV2:
     input: 
         dynamic("group.{n}.vcf"),
         maxx = "dup_max.intersect",
+        pdf='mi.cuts.gml.pdf',
         mean = "dup_mean.intersect"
     output: "PSV1_done"
     shell: "touch {output}"

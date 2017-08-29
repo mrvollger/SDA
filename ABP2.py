@@ -16,8 +16,8 @@ scriptsDir= '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
 PBS="/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts" 
 #CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
-CANU_DIR="/net/eichler/vol21/projects/bac_assembly/nobackups/canu/Linux-amd64/bin"
-
+#CANU_DIR="/net/eichler/vol21/projects/bac_assembly/nobackups/canu/Linux-amd64/bin"
+CANU_DIR="/net/eichler/vol2/home/mvollger/projects/builds/canu/Linux-amd64/bin"
 
 groups= glob.glob("group.[0-9]*.vcf")
 IDS= []
@@ -459,6 +459,8 @@ rule combineAsm:
         cat group.*/Mark.assembly.consensus.fasta > {output.asmMark} || > {output.asmMark}
         cat   group.*/WH.assembly.consensus.fasta > {output.asmWH}   || > {output.asmWH}
         '''
+
+
 #
 # runs a summary script that just consilidates some data, which is later sued in plotting
 #
@@ -468,11 +470,13 @@ rule summary:
     output:
         summary="summary.txt",
     shell:
-        '''
+        """
         {base2}/summary.py
-        '''
+        """
 
-#
+
+'''
+# I moved this to ABP1
 # makes a gephi version of the plot, 
 # much nice imo 
 #
@@ -482,16 +486,17 @@ rule gephi:
     output:
         pdf='mi.cuts.gml.pdf'
     shell:
-        '''
+        """
         {base2}/gephi/gephi.sh
-        '''
+        """
+'''
 
 
+# pdf='mi.cuts.gml.pdf',
 rule final:
     input:
         combine='WH.assemblies.fasta',
         summary="summary.txt",
-        pdf='mi.cuts.gml.pdf',
         truth="truth/README.txt",
     output: 'PSV2_done'
     shell:
