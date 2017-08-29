@@ -15,9 +15,9 @@ scriptsDir= '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/
 #base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
 PBS="/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts" 
-CADIR="/net/eichler/vol5/home/mchaisso/software/wgs-8.2/Linux-amd64/bin/"
-CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
-CORES="4"
+#CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
+CANU_DIR="/net/eichler/vol21/projects/bac_assembly/nobackups/canu/Linux-amd64/bin"
+
 
 groups= glob.glob("group.[0-9]*.vcf")
 IDS= []
