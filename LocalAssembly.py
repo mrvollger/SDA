@@ -139,14 +139,16 @@ class LocalAssembly:
         self.bestLength = []
         self.averageLength = []
         for group in glob.glob(os.path.join(self.mydir, "group.*/")):
-            my_path1 = os.path.join(group, "WH.average.m4")
-            my_path2 = os.path.join(group, "WH.best.m4")
+            my_path1 = os.path.join(group, "WH.average.m5")
+            my_path2 = os.path.join(group, "WH.best.m5")
             if(os.path.exists(os.path.join(self.mydir, "duplications.fasta")) and
                     os.path.exists(my_path1) and os.path.getsize(my_path1) > 0 and
                     os.path.exists(my_path2) and os.path.getsize(my_path2) > 0 ):
                 #print("PCT ID Files exist")
-                average = pd.read_csv( my_path1, sep=" ", header = 0)
-                best =    pd.read_csv( my_path2, sep=" ", header = 0)
+                #average = pd.read_csv( my_path1, sep=" ", header = 0)
+                average = pd.read_csv( my_path1, sep=" ", header=None)
+                best =    pd.read_csv( my_path2, sep=" ", header=None)
+                print(best)
                 # skip if there are no alingments 
                 if( len(average) < 1 or len(best) < 1):
                     #print("too short")
@@ -157,15 +159,17 @@ class LocalAssembly:
                     self.averageLength.append("NA")
                 else:
                     #print("alignments exist")
+                    average["pctsimilarity"] = 100*average[11]/(average[11] + average[12])
                     self.averageID.append(round(average["pctsimilarity"].mean(), 2))
-                    aveLen = int(abs(average["qstart"] - average["qend"]).mean())
+                    aveLen = int(abs(average[2] - average[3]).mean())
                     self.averageLength.append(aveLen) 
-
+                    
+                    best["pctsimilarity"] = 100*best[11]/(best[11] + best[12])
                     pctID = round(best["pctsimilarity"].iloc[0],2)
-                    group = best["qname"].iloc[0]
-                    region = best["tname"].iloc[0]
-                    start = best["tstart"].iloc[0]
-                    end = best["tend"].iloc[0]
+                    group = best[0].iloc[0]
+                    region = best[5].iloc[0]
+                    start = best[7].iloc[0]
+                    end = best[8].iloc[0]
                     length = abs(end - start)
                     self.bestID.append(pctID)
                     self.bestMatch.append(region)

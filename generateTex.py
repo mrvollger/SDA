@@ -92,14 +92,17 @@ counter = 0
 running = ""
 for idx, text in enumerate(splitMain):
     running += text + "\\newpage \n" 
-    if(  (idx+1) % 50 == 0  ):
+    if(  (idx+1) % 25 == 0  ):
         f = open("booklets/booklet{}.tex".format(counter), "w+")
         f.write(header+running+footer)
         f.close()
         running = ""
         counter += 1
 
-
+f = open("booklets/booklet{}.tex".format(counter), "w+")
+f.write(header+running+footer)
+f.close()
+        
 
 
 

@@ -7,7 +7,12 @@ module load modules modules-init modules-gs/prod modules-eichler
 module load anaconda/20161130
 #base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
+
+
 NPROC=$(nproc)
+
+#NPROC=4
+
 
 # executes part 1 or part 2 or all of assembly by phasing
 if [ "$1" == "PSV1" ]; then
@@ -27,7 +32,7 @@ rm -f PSV1_done PSV2_done
 
 # sometimes snakemake fails in a really bad way and it leaves to lock on the dir
 # this is probably bad practive but oh well
-if [ "$1" == "unlock" ]; then
+if [ "unlock" == "unlock" ]; then
     snakemake --unlock -s $base2/ABP1.py
     snakemake --unlock -s $base2/ABP2.py
 fi

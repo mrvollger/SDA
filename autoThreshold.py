@@ -21,8 +21,10 @@ colnames = ["contig", "pos", "A", "C", "G", "T", "deletion", "insertion"]
 f = open(nucfreq)
 first  = []
 second = []
+truepos= []
 for line in f:
     line = line.split()
+    truepos.append(int(line[1]))
     bases = []
     for basepair in line[2:6]:
         bases.append(int(basepair))
@@ -32,7 +34,17 @@ for line in f:
 pos = np.array( range(0,len(second)) ) 
 second = np.array(second)
 first = np.array(first)
+truepos = np.array(truepos)
 
+
+
+
+plt.plot(truepos, first, 'bo')
+plt.plot(truepos, second, 'ro')
+plt.savefig('threshold.png')
+
+exit(0)
+# after this stuff is gmm stuff that did not work
 
 #second[second > 300 ] = 15
 gmm = GaussianMixture(n_components=2, covariance_type="diag", tol=0.001, weights_init= [.5,.5])

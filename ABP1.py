@@ -22,16 +22,20 @@ scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
 utils="/net/eichler/vol2/home/mvollger/projects/utility"
 
+# options for the verison of blasr in pitchfork
+pitchfork="source /net/eichler/vol2/home/mvollger/projects/builds/pitchfork/setup_pitchfork.sh && "
+
+
 #settings
 MINCOV = int(os.environ.get("MINCOV", "30"))
 MAXCOV = int(os.environ.get("MAXCOV", "50"))
 # only consider collapsed sites
 MINTOTAL = int(os.environ.get("MINTOTAL", "100"))
 CMPTOREF = os.environ.get("CMPTOREF", "TRUE")
-#MINCOV=30
-#MAXCOV=50
-#MINTOTAL=100
-print("MINCOV:{}\nMACCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
+MINCOV=30
+MAXCOV=50
+MINTOTAL=100
+print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
 rule master:	
     input: 'PSV1_done'
@@ -70,6 +74,24 @@ elif(os.path.exists("reads.orig.fasta")):
         shell: 
             '{blasr} {input.basreads} {input.ref} -sam  -mismatch 3 -insertion 9 -deletion 9 -nproc 4 -out /dev/stdout -minMapQV 30 -minAlignLength 500 -preserveReadTitle | samtools view -bS - | samtools sort -T tmp -o {output}'
 
+elif(os.path.exists("reads.sequal.bam")):
+    rule realign_reads_sequal:
+        input:
+            basreads='reads.sequal.bam', 
+            ref='ref.fasta'
+        output:
+            "reads.bam"
+        threads: 8
+        shell: 
+            """
+            {pitchfork} blasr --bam  \
+                    --mismatch 3 --insertion 9 --deletion 9 \
+                    --nproc {threads} --out temp.bam \
+                    --minAlignLength 500 --preserveReadTitle \
+                     {input.basreads} {input.ref}
+                     samtools sort -T tmp temp.bam > reads.bam
+                     rm temp.bam
+            """
 else:
     print("NO INPUT READS!!!")
 
@@ -113,7 +135,26 @@ rule depthProfile:
         """
         {utils}/plotDepth.py {input.depth} {output.png}
         """
-
+#
+#
+# lets just look at teh het profile
+#
+rule hetProfile:
+    input:
+        png="depthProfile.png",
+        reads="reads.bam",
+        ref="ref.fasta"	
+    output: 
+        hetsnv="hetProfile/assembly.consensus.fragments.snv",
+        hetvcf="hetProfile/assembly.consensus.nucfreq.vcf",
+    shell:
+        """
+        mkdir -p hetProfile
+        pushd hetProfile
+        {scriptsDir}/BamToSNVTable.sh ../{input.reads} ../{input.ref} 0 0
+        autoThreshold.py
+        popd
+        """
 #
 # Given the alignments, count the frequency of each base at every
 # position, and estimate the SNVs from this frequency. 
@@ -121,6 +162,7 @@ rule depthProfile:
 #echo "{scriptsDir}/BamToSNVTable.sh reads.bam ref.fasta MINCOV" ??? what is this for ??? 
 rule create_SNVtable_from_reads:
     input:
+        hetsnv="hetProfile/assembly.consensus.fragments.snv",
         png="depthProfile.png",
         reads="reads.bam",
         ref="ref.fasta"	
@@ -128,7 +170,11 @@ rule create_SNVtable_from_reads:
         snv="assembly.consensus.fragments.snv",
         vcf="assembly.consensus.nucfreq.vcf",
     shell:
-        '{scriptsDir}/BamToSNVTable.sh {input.reads} {input.ref} {MINCOV} {MINTOTAL}'
+        """
+        {scriptsDir}/BamToSNVTable.sh {input.reads} {input.ref} {MINCOV} {MINTOTAL}
+        #{scriptsDir}/BamToSNVTable.sh {input.reads} {input.ref} {MINCOV} 0
+        autoThreshold.py
+        """
 
 
 #
@@ -146,10 +192,10 @@ rule SNVtable_to_SNVmatrix:
     shell:
        '{scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvsPos} --mat {output.mat}'  
 
-
+'''
 #
 # create duplicaitons.fasta
-#
+# might be a bad idea, I am not sure I am recreating the correct dups
 GRCh38="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.no_alts.fasta"
 sa="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.no_alts.fasta.sa"
 rule duplicationsFasta1:
@@ -159,9 +205,9 @@ rule duplicationsFasta1:
         dupsam="ref.fasta.sam",
     threads: 8
     shell:
-        '''
+        """
         blasr {input.dupref} {GRCh38} -nproc {threads} -sa {sa} -sam -bestn 30 -out {output.dupsam}
-        '''
+        """
 
 rule duplicationsFasta2:
     input:
@@ -169,9 +215,9 @@ rule duplicationsFasta2:
     output:
         duprgn="ref.fasta.rgn",
     shell:
-        '''
+        """
         ~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >10000 && $9 > 0.85) print $1":"$2"-"$3 }}' > {output.duprgn}
-        '''
+        """
 
 rule duplicationsFasta3:
     input:
@@ -179,10 +225,10 @@ rule duplicationsFasta3:
     output:
         dup="duplications.fasta",
     shell:
-        '''
+        """
         samtools faidx {GRCh38} `cat {input.duprgn}` > {output.dup}
-        '''
-
+        """
+'''
 
 
 #
@@ -193,7 +239,7 @@ rule duplicationsFasta3:
 MAX_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.max_identity.bed"
 MEAN_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.mean_identity.bed"
 
-if( os.path.getsize("duplications.fasta") > 0 ):
+if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta") > 0 ):
     rule realignReads_to_Dups:
         input:
             "reads.fasta",

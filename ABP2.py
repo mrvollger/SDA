@@ -15,9 +15,10 @@ scriptsDir= '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/
 #base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
 PBS="/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts" 
-#CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
+# Canu 1.5 seems to have muchhhh better performance over canu 1.6
+CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
 #CANU_DIR="/net/eichler/vol21/projects/bac_assembly/nobackups/canu/Linux-amd64/bin"
-CANU_DIR="/net/eichler/vol2/home/mvollger/projects/builds/canu/Linux-amd64/bin"
+#CANU_DIR="/net/eichler/vol2/home/mvollger/projects/builds/canu/Linux-amd64/bin"
 
 groups= glob.glob("group.[0-9]*.vcf")
 IDS= []
@@ -94,6 +95,7 @@ rule whatsHap:
         hap= 'group.{n}/haplotagged.bam',
         hapH1= 'group.{n}/H1.WH.sam',
         hapH2= 'group.{n}/H2.WH.sam'
+    threads: 1000 # for some reason loading this env multiple times breaks it, so stop from parallel exe
     shell:
         ' source {base2}/env_whatshap.cfg && '
         ' source activate whatshap && '
@@ -208,6 +210,45 @@ rule runAssembly:
         fi
         '''
 
+rule runFalcon:
+    input:
+        canu = 'group.{n}/{prefix}.assembly/asm.contigs.fasta',
+        reads = 'group.{n}/{prefix}.reads.fasta',
+    output:
+        'group.{n}/{prefix}.assembly/asm.contigs.fasta'
+    threads: 16
+    shell:
+        """
+        # if the assembly is empty lets try out falcon, and the reads file is not empty 
+        if [ ! -s  {input.canu} ] && [ -s {input.reads} ]; then
+            # move into the assembly directory 
+            pushd 'group.{n}/{prefix}.assembly/'
+
+            # put the reads in an fofn for falcon
+            echo $(readlink -f {input.reads}) > input.fofn
+
+            # run falcon
+            PBS=~mchaisso/projects/PacBioSequencing/scripts
+            BLASR=~mchaisso/projects/blasr-repo/blasr
+            MMAP=~mchaisso/software/minimap
+            MASM=~mchaisso/software/miniasm
+            QUIVER=~mchaisso/software/quiver
+            PBG=~mchaisso/projects/pbgreedyphase
+            
+            source ~mchaisso/scripts/setup_falcon.sh && fc_run.py ~mchaisso/projects/PacBioSequencing/scripts/local_assembly/falcon/fc_run.low_cov.cfg
+           
+            # move the assembly into the spot of the other assembly 
+            cp 2-asm-falcon/p_ctg.fa
+
+            popd 
+
+        else
+            # not running falcon
+        
+        fi
+        
+        """
+
 # check if the assembly is not size 0
 rule assemblyReport:
     input:  
@@ -314,6 +355,8 @@ if(os.path.exists("duplications.fasta")):
         output:
             best= 'group.{n}/{prefix}.best.m4',
             average= 'group.{n}/{prefix}.average.m4',
+            best5= 'group.{n}/{prefix}.best.m5',
+            average5= 'group.{n}/{prefix}.average.m5',
         shell:
             '''
             if [ ! -s {input.quiver} ] 
@@ -321,9 +364,13 @@ if(os.path.exists("duplications.fasta")):
                 # create empty files, this will allow other rules to conitnue 
 		        > {output.best}
                 > {output.average}
+                > {output.best5}
+                > {output.average5}
             else
                 {blasr} {input.dup} {input.quiver} -bestn 1 -header -m 4 > {output.average}
                 {blasr} {input.quiver} {input.dup} -bestn 1 -header -m 4 > {output.best}
+                {blasr} {input.dup} {input.quiver} -bestn 1 -m 5 > {output.average5}
+                {blasr} {input.quiver} {input.dup} -bestn 1 -m 5 > {output.best5}
             fi
             '''
 
@@ -331,12 +378,13 @@ if(os.path.exists("duplications.fasta")):
         input:
             dup="duplications.fixed.fasta",
             quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
+            #preads= 'group.{n}/{prefix}.reads.fasta',
             preads= 'group.{n}/H2.{prefix}.sam',
         output:
             psam= 'group.{n}/{prefix}.{n}.sam',
             pbam= 'group.{n}/{prefix}.{n}.bam',
         shell:
-            '''
+            """
             if [ ! -s {input.preads} ] 
 	        then
                 # create empty files, this will allow other rules to conitnue 
@@ -344,12 +392,14 @@ if(os.path.exists("duplications.fasta")):
                 > {output.pbam}
             else
                 {blasr} {input.preads} {input.dup} -bestn 1 -sam > {output.psam}
-                samtools view -S -b -o temp.bam {output.psam}
-                samtools sort -o {output.pbam} temp.bam
+                samtools view -b {output.psam} \
+                        | samtools sort -o {output.pbam}
+                #samtools view -S -b -o temp.bam {output.psam}
+                #samtools sort -o {output.pbam} temp.bam
                 samtools index {output.pbam}
-                rm temp.bam
+                #rm temp.bam
             fi
-            '''
+            """
     
     rule truePSVs:
         input:
@@ -360,7 +410,8 @@ if(os.path.exists("duplications.fasta")):
         output:
             truth="truth/README.txt",
             refsam="refVSdup.sam",
-            refsnv="refVSdup.snv"
+            refsnv="refVSdup.snv",
+            truthmatrix="truth.matrix"
         shell:
             '''
             mkdir -p truth
@@ -373,7 +424,7 @@ if(os.path.exists("duplications.fasta")):
            
             ~mchaisso/projects/AssemblyByPhasing/scripts/utils/CompareRefSNVWithPSV.py \
                     --ref {output.refsnv} --psv {input.cuts} --vcf {input.vcf} \
-                    --refFasta {input.ref} --writevcf truth/true
+                    --refFasta {input.ref} --writevcf truth/true > truth.matrix
             
             '''
 
@@ -385,14 +436,14 @@ else:
         output:
             best= 'group.{n}/{prefix}.best.m4',
             average= 'group.{n}/{prefix}.average.m4',
-            sam= 'group.{n}/{prefix}.best.sam',
-            bam= 'group.{n}/{prefix}.best.bam',
+            best5= 'group.{n}/{prefix}.best.m5',
+            average5= 'group.{n}/{prefix}.average.m5',
         shell:
             '''
             > {output.average}
             > {output.best}
-            > {output.bam}
-            > {output.sam}
+            > {output.best5}
+            > {output.average5}
             '''
 
     rule noMappingBest:
@@ -439,12 +490,13 @@ rule removeEmptyAsm:
     input:
         eMark=expand( 'group.{ID}/Mark.best.m4', ID=IDS),
         eWH=expand( 'group.{ID}/WH.best.m4',   ID=IDS),
+        e5WH=expand( 'group.{ID}/WH.best.m5',   ID=IDS),
         esam=expand( 'group.{ID}/WH.{ID}.sam',   ID=IDS),
         ebam=expand( 'group.{ID}/WH.{ID}.bam',   ID=IDS),
     output: 'removeEmpty'
     shell:
         # removes any empty assemblies we may have created along the way 
-        'find group.*/ -maxdepth 1 -size  0  | xargs -n 1 rm -f      && '
+        #'find group.*/ -maxdepth 1 -size  0  | xargs -n 1 rm -f      && '
         'touch {output}'
 
 rule combineAsm:
@@ -467,11 +519,13 @@ rule combineAsm:
 rule summary:
     input:
         combine='WH.assemblies.fasta',
+        truth="truth/README.txt",
     output:
         summary="summary.txt",
     shell:
         """
         {base2}/summary.py
+        cat truth.matrix >> {output.summary}
         """
 
 
