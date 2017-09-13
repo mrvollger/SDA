@@ -47,6 +47,8 @@ class LocalAssembly:
         self.numOfPSVs()
         self.samReads()
         self.readIdentity()
+        self.readTruthMatrix()
+
 
     def basename(self):
         self.basename = self.mydir.split("/")[-1].strip()
@@ -115,7 +117,6 @@ class LocalAssembly:
         else:
             self.refs = []
         
-
         # turn ref regions and seg dup identities into text
         self.dupNumber = len(self.refs)
         self.refRegions = ""
@@ -128,7 +129,6 @@ class LocalAssembly:
                 des += "[" + ",".join(self.mean[key])+ "]"
             
             self.refRegions += des + ";"
-        
         self.refRegions = self.refRegions[:-1]
  
 
@@ -148,15 +148,14 @@ class LocalAssembly:
                 #average = pd.read_csv( my_path1, sep=" ", header = 0)
                 average = pd.read_csv( my_path1, sep=" ", header=None)
                 best =    pd.read_csv( my_path2, sep=" ", header=None)
-                print(best)
                 # skip if there are no alingments 
                 if( len(average) < 1 or len(best) < 1):
                     #print("too short")
-                    self.bestID.append("NA")
-                    self.averageID.append("NA")
-                    self.bestMatch.append("NA")
-                    self.bestLength.append("NA")
-                    self.averageLength.append("NA")
+                    self.bestID.append("None")
+                    self.averageID.append("None")
+                    self.bestMatch.append("None")
+                    self.bestLength.append("None")
+                    self.averageLength.append("None")
                 else:
                     #print("alignments exist")
                     average["pctsimilarity"] = 100*average[11]/(average[11] + average[12])
@@ -164,22 +163,24 @@ class LocalAssembly:
                     aveLen = int(abs(average[2] - average[3]).mean())
                     self.averageLength.append(aveLen) 
                     
-                    best["pctsimilarity"] = 100*best[11]/(best[11] + best[12])
-                    pctID = round(best["pctsimilarity"].iloc[0],2)
                     group = best[0].iloc[0]
                     region = best[5].iloc[0]
                     start = best[7].iloc[0]
                     end = best[8].iloc[0]
                     length = abs(end - start)
-                    self.bestID.append(pctID)
                     self.bestMatch.append(region)
                     self.bestLength.append(length)
+            
+                    best["pctsimilarity"] = 100*best[11]/(best[11] + best[12])
+                    pctID = round(best["pctsimilarity"].iloc[0],2)
+                    self.bestID.append(pctID)
+
             else:
-                self.bestID.append("NA")
-                self.averageID.append("NA")
-                self.bestMatch.append("NA")
-                self.bestLength.append("NA")
-                self.averageLength.append("NA")
+                self.bestID.append("None")
+                self.averageID.append("None")
+                self.bestMatch.append("None")
+                self.bestLength.append("None")
+                self.averageLength.append("None")
 
     def readAssemblies(self):
         self.ASMs = []
@@ -199,34 +200,58 @@ class LocalAssembly:
                     asm = asm[0]
                     self.status.append("Success")
                     self.ASMs.append(asm.description)
-                    self.lens.append(asm.description.split(" ")[1] )
+                    # the 4: part removes len= part
+                    self.lens.append(asm.description.split(" ")[1][4:] )
                     self.reads.append(asm.description.split(" ")[2] )
                     self.asmNumber += 1
-                else:
+                elif( len(asm) > 1 ):
                     self.status.append("MultipleAsm")
-                    self.ASMs.append("NA")
-                    self.lens.append("NA")
-                    self.reads.append("NA")
+                    self.ASMs.append("None")
+                    self.lens.append("None")
+                    self.reads.append("None")
+                else:
+                    self.status.append("Failed")
+                    self.ASMs.append("None")
+                    self.lens.append("None")
+                    self.reads.append("None")
             else:
                 self.status.append("Failed")
-                self.ASMs.append("NA")
-                self.lens.append("NA")
-                self.reads.append("NA")
+                self.ASMs.append("None")
+                self.lens.append("None")
+                self.reads.append("None")
 
         self.CCNumber = len(self.ASMs)
         return
 
     # output stuff
     #tableFormat = "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n"
- 
+
+
+    def readTruthMatrix(self):
+        matfile = self.mydir + "/truth.matrix"
+        self.asmTruth = []
+        self.truthHeader = "copy=>"
+        if( existNotZero(matfile) ):
+            mat = open(matfile)
+            for idx, line in enumerate(mat.readlines()):
+                if(idx == 0):
+                    continue
+                if(idx == 1):
+                    s = line.split()
+                    for j in range(len(s) - 1):
+                        self.truthHeader += "\t" + str(j+1) + "."
+
+                line = "\t".join(line.split())
+                self.asmTruth.append(line)
+
     def getHeader(self):
         headerList =["region_in_falcon", "copies_in_reference","number_of_psv_assemblies",
                 "number_of_CC_groups", 
-                "CC_ID", "Status","numOfPSVs","length", "num_of_asm_reads",
+                "CC_ID", "Status","numOfPSVs","length", #"num_of_asm_reads",
                 "num_of_sam_reads","psvURL",
                 "averagePerID", "averageLength", 
                 "bestPerID", "bestLength", "BestRegionInTheHumanReference", 
-                "refRegions"]
+                "refRegions", self.truthHeader]
         header = ""
         for item in headerList:
             header += item + "\t"
@@ -244,11 +269,11 @@ class LocalAssembly:
                 psvs = self.PSVs[self.groups[idx]]
                 rtnList = [self.basename, self.dupNumber, self.asmNumber, 
                         self.CCNumber, 
-                        self.groups[idx], self.status[idx], psvs, self.lens[idx], self.reads[idx], 
+                        self.groups[idx], self.status[idx], psvs, self.lens[idx], #self.reads[idx], 
                         self.num_sam_reads[idx], self.psvURL,
                         self.averageID[idx], self.averageLength[idx], 
                         self.bestID[idx], self.bestLength[idx], self.bestMatch[idx], 
-                        self.refRegions] 
+                        self.refRegions, self.asmTruth[self.groups[idx]]] 
                 for item in rtnList:
                     rtn += str(item) + "\t"
                 rtn = rtn[:-1] + "\n"

@@ -27,6 +27,8 @@ outbam = AlignmentFile( bam )
 
 # create a fake sample name 
 sampleName = re.findall("SM:[^\s]+", outbam.text )
+sampleName=list(set(sampleName))
+
 assert len(sampleName)==1, "multiple sample names?"
 sampleName = re.sub("SM:", "", sampleName[0])
 

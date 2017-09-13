@@ -6,7 +6,7 @@ SNAKEMAKE_DIR= os.path.dirname(workflow.snakefile)
 
 shell.executable("/bin/bash")
 #shell.prefix("source %s/env_PSV.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_PSV.cfg; " % SNAKEMAKE_DIR)
+shell.prefix("source %s/env_PSV.cfg; set -eo pipefail" % SNAKEMAKE_DIR)
 #shell.suffix("2> /dev/null")
 
 blasr= '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
@@ -14,6 +14,7 @@ blasrDir= '~mchaisso/projects/blasr-repo/blasr'
 scriptsDir= '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
 #base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
+utils="/net/eichler/vol2/home/mvollger/projects/utility"
 PBS="/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts" 
 # Canu 1.5 seems to have muchhhh better performance over canu 1.6
 CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
@@ -47,8 +48,10 @@ rule makeGroupDirs:
         group='group.{n}/',
         tag='group.{n}/group.{n}'
     shell:
-        'mkdir -p {output.group} && '
-        'echo "{output.tag}" >  {output.tag} '
+        """
+        mkdir -p {output.group} 
+        echo "{output.tag}" >  {output.tag} 
+        """
 #-----------------------------------------------------------------------------------------------------#
 
 
@@ -66,8 +69,10 @@ rule phasedVCF:
         vcf= 'group.{n}.vcf'
     output: 'group.{n}/phased.{n}.vcf'
     shell:
-        'source {base2}/env_whatshap.cfg && '
-        '{base2}/fixVCF.py --out {output} --vcf {input.vcf}'
+        """
+        source {base2}/env_whatshap.cfg 
+        {base2}/fixVCF.py --out {output} --vcf {input.vcf}
+        """
 
 # whatshap requires unique bam entries, make those
 # also requires that pysam is installed, should be taken care of by loading the whatshap anaconda env 
@@ -75,15 +80,20 @@ rule bamForWhatsHap:
     input: "reads.bam"
     output: 'reads.sample.bam'
     shell:
-        'source {base2}/env_whatshap.cfg && '
-        '{base2}/changeBamName.py'
+        """
+        source {base2}/env_whatshap.cfg 
+        {base2}/changeBamName.py
+        """
 
 # index reads.sample.bam
 rule indexWhatshapReads:
     input:'reads.sample.bam'
     output: 'reads.sample.bam.bai',
     shell:
-        'samtools index {input} {output}'
+        """
+        echo {output}
+        samtools index {input}
+        """ 
 
 # run whats hap and get the partitioned sam files
 rule whatsHap:
@@ -97,11 +107,13 @@ rule whatsHap:
         hapH2= 'group.{n}/H2.WH.sam'
     threads: 1000 # for some reason loading this env multiple times breaks it, so stop from parallel exe
     shell:
-        ' source {base2}/env_whatshap.cfg && '
-        ' source activate whatshap && '
-        ' whatshap haplotag -o  {output.hap} --reference ref.fasta {input.hapvcf} {input.hapbam} &&'
-        ' samtools view -h -o - {output.hap} | grep -E "^@|HP:i:1" >  {output.hapH1} && '
-        ' samtools view -h -o - {output.hap} | grep -E "^@|HP:i:2" >  {output.hapH2} '
+        """
+        source {base2}/env_whatshap.cfg 
+        source activate whatshap 
+        whatshap haplotag -o  {output.hap} --reference ref.fasta {input.hapvcf} {input.hapbam} 
+        samtools view -h -o - {output.hap} | grep -E "^@|HP:i:1" >  {output.hapH1} 
+        samtools view -h -o - {output.hap} | grep -E "^@|HP:i:2" >  {output.hapH2}
+        """
 #-----------------------------------------------------------------------------------------------------#
 
 
@@ -124,7 +136,7 @@ rule partitionReads:
         group1='group.{n}/H2.Mark.sam',
         group2='group.{n}/H1.Mark.sam'
     shell:
-    	'''
+    	"""
         #samtools view -h {input.bam} > temp.txt
         samtools view -h {input.bam} \
 	    	| ~mchaisso/projects/pbgreedyphase/partitionByPhasedSNVs \
@@ -137,7 +149,8 @@ rule partitionReads:
 					    --minGenotyped 2 \
 					    --minDifference 3 \
                         || touch {output.group1} && touch {output.group2}
-        '''
+        """
+
 # generate a fasta file from the partition
 rule fastaFromPartition:
     input: 
@@ -174,16 +187,16 @@ rule readsFromSam:
         pfasta= 'group.{n}/{prefix}.reads.fasta'
     shell:
         '''
-        grep -v "^@" {input.H2} > temp.txt
-        if [ -s temp.txt ]
+        grep -v "^@" {input.H2} > group.{wildcards.n}/{wildcards.prefix}.temp.txt
+        if [ -s group.{wildcards.n}/{wildcards.prefix}.temp.txt ]
         then
-            cat temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
+            cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
                 ~mchaisso/projects/PacBioSequencing/scripts/falcon/FormatFasta.py --fakename  > {output.pfasta}
         else
             >&2 echo " no real fasta file for assembly"
             touch {output.pfasta}
         fi
-        rm -f temp.txt
+        rm -f group.{wildcards.n}/{wildcards.prefix}.temp.txt 
         '''
 
 # run the assembly
@@ -210,24 +223,30 @@ rule runAssembly:
         fi
         '''
 
+# this is currently not being run, uncooment the input line from assemblyReport, to start running it, and add additional code 
+# to handle it
 rule runFalcon:
     input:
         canu = 'group.{n}/{prefix}.assembly/asm.contigs.fasta',
         reads = 'group.{n}/{prefix}.reads.fasta',
     output:
-        'group.{n}/{prefix}.assembly/asm.contigs.fasta'
+       'group.{n}/{prefix}.assembly/falcon.readme'
     threads: 16
     shell:
         """
         # if the assembly is empty lets try out falcon, and the reads file is not empty 
         if [ ! -s  {input.canu} ] && [ -s {input.reads} ]; then
-            # move into the assembly directory 
-            pushd 'group.{n}/{prefix}.assembly/'
+            
+            make a falcon dir
+            mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly/falcon
 
             # put the reads in an fofn for falcon
-            echo $(readlink -f {input.reads}) > input.fofn
+            echo $(readlink -f {input.reads}) > group.{wildcards.n}/{wildcards.prefix}.assembly/falcon/input.fofn
+            
+            # move into the assembly directory 
+            pushd group.{wildcards.n}/{wildcards.prefix}.assembly/falcon/
 
-            # run falcon
+            # setup falcon
             PBS=~mchaisso/projects/PacBioSequencing/scripts
             BLASR=~mchaisso/projects/blasr-repo/blasr
             MMAP=~mchaisso/software/minimap
@@ -235,16 +254,19 @@ rule runFalcon:
             QUIVER=~mchaisso/software/quiver
             PBG=~mchaisso/projects/pbgreedyphase
             
+            # run falcon
             source ~mchaisso/scripts/setup_falcon.sh && fc_run.py ~mchaisso/projects/PacBioSequencing/scripts/local_assembly/falcon/fc_run.low_cov.cfg
            
             # move the assembly into the spot of the other assembly 
-            cp 2-asm-falcon/p_ctg.fa
+            cp 2-asm-falcon/p_ctg.fa ../asm.contigs.fasta
 
             popd 
 
+            echo "Falcon Ran" > {output} 
+
         else
             # not running falcon
-        
+            echo "Canu worked so falcon did not run" > {output}
         fi
         
         """
@@ -253,12 +275,13 @@ rule runFalcon:
 rule assemblyReport:
     input:  
         oasm= 'group.{n}/{prefix}.assembly/asm.contigs.fasta',
-        preads='group.{n}/{prefix}.reads.fasta'
+        preads='group.{n}/{prefix}.reads.fasta',
+        #falcon='group.{n}/{prefix}.assembly/falcon.readme'
     output: 
         asm=  'group.{n}/{prefix}.assembly.fasta',
         report='group.{n}/{prefix}.report.txt'
     shell:
-        '''
+        """
         if [ -s {input.oasm} ]
         then
             cp {input.oasm} {output.asm}
@@ -272,18 +295,21 @@ rule assemblyReport:
             touch {output.asm}
             touch {output.report}
         fi
-        '''
+        """ 
 
+
+# if samtobas fails it is becasue we started with no qual information and it kills it
 rule bamFromAssembly:
     input:
         asm= 'group.{n}/{prefix}.assembly.fasta',
-        H2= 'group.{n}/H2.{prefix}.sam'
+        H2= 'group.{n}/H2.{prefix}.sam', # samtobas is not robust enough to work if I start without qual info so using fasta
+        preads='group.{n}/{prefix}.reads.fasta',
     output: 
         asmbam= 'group.{n}/{prefix}.assembly.bam',
         asmbas= 'group.{n}/{prefix}.reads.bas.h5'
     threads: 16
     shell:
-        '''
+        """
         if [ ! -s {input.asm} ] 
 	    then
             # create empty files, this will allow other rules to conitnue 
@@ -294,9 +320,10 @@ rule bamFromAssembly:
 	        ~mchaisso/projects/blasr-repo/blasr/alignment/bin/blasr {output.asmbas} {input.asm} \
                 -clipping subread -sam -bestn 1 -out /dev/stdout  -nproc {threads} \
                 | samtools view -bS - | samtools sort -T tmp -o {output.asmbam}
-	        samtools index {output.asmbam}
+	        
+            samtools index {output.asmbam}
         fi
-        '''
+        """
 
 rule quiverFromBam:
     input:
@@ -358,7 +385,7 @@ if(os.path.exists("duplications.fasta")):
             best5= 'group.{n}/{prefix}.best.m5',
             average5= 'group.{n}/{prefix}.average.m5',
         shell:
-            '''
+            """
             if [ ! -s {input.quiver} ] 
 	        then
                 # create empty files, this will allow other rules to conitnue 
@@ -372,7 +399,7 @@ if(os.path.exists("duplications.fasta")):
                 {blasr} {input.dup} {input.quiver} -bestn 1 -m 5 > {output.average5}
                 {blasr} {input.quiver} {input.dup} -bestn 1 -m 5 > {output.best5}
             fi
-            '''
+            """ 
 
     rule mapBackPartition:
         input:
@@ -413,7 +440,7 @@ if(os.path.exists("duplications.fasta")):
             refsnv="refVSdup.snv",
             truthmatrix="truth.matrix"
         shell:
-            '''
+            """
             mkdir -p truth
             echo "exists" > {output.truth}
              
@@ -426,7 +453,7 @@ if(os.path.exists("duplications.fasta")):
                     --ref {output.refsnv} --psv {input.cuts} --vcf {input.vcf} \
                     --refFasta {input.ref} --writevcf truth/true > truth.matrix
             
-            '''
+            """
 
 else:
     rule noMapping:
@@ -439,12 +466,12 @@ else:
             best5= 'group.{n}/{prefix}.best.m5',
             average5= 'group.{n}/{prefix}.average.m5',
         shell:
-            '''
+            """
             > {output.average}
             > {output.best}
             > {output.best5}
             > {output.average5}
-            '''
+            """
 
     rule noMappingBest:
         input:
@@ -453,11 +480,15 @@ else:
         output:
             sam= 'group.{n}/{prefix}.best.sam',
             bam= 'group.{n}/{prefix}.best.bam',
+            psam= 'group.{n}/{prefix}.{n}.sam',
+            pbam= 'group.{n}/{prefix}.{n}.bam',
         shell:
-            '''
+            """
             > {output.bam}
             > {output.sam}
-            '''
+            > {output.pbam}
+            > {output.psam}
+            """
     
     rule noTruePSVs:
         input:
@@ -467,10 +498,10 @@ else:
         output:
             truth="truth/README.txt",
         shell:
-            '''
+            """
             mkdir -p truth
             echo "does not exist" > {output.truth}
-            '''
+            """
 
 
 
@@ -485,6 +516,7 @@ else:
 # empty files
 # creats a group output file
 # then creats a empty file singinaling we are done
+# removeing empty files is actually a bad idea with snakemake becuase it will try to re run canu next time, when we know it will jsut fail
 #
 rule removeEmptyAsm:
     input:
@@ -495,9 +527,11 @@ rule removeEmptyAsm:
         ebam=expand( 'group.{ID}/WH.{ID}.bam',   ID=IDS),
     output: 'removeEmpty'
     shell:
+        """
         # removes any empty assemblies we may have created along the way 
-        #'find group.*/ -maxdepth 1 -size  0  | xargs -n 1 rm -f      && '
-        'touch {output}'
+        #find group.*/ -maxdepth 1 -size  0  | xargs -n 1 rm -f 
+        touch {output}
+        """
 
 rule combineAsm:
     input:
@@ -506,11 +540,58 @@ rule combineAsm:
         asmWH='WH.assemblies.fasta',
         asmMark='Mark.assemblies.fasta'
     shell:
-        '''
+        """
         rm {input.remove}
         cat group.*/Mark.assembly.consensus.fasta > {output.asmMark} || > {output.asmMark}
         cat   group.*/WH.assembly.consensus.fasta > {output.asmWH}   || > {output.asmWH}
-        '''
+        """
+
+#
+rule map_asms_to_ref:
+    input:
+        asmWH="WH.assemblies.fasta",
+        ref="ref.fasta"
+    output:
+        WHm5="WH.m5",
+    shell:
+        """
+        blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
+        """
+
+
+rule map_asms_to_duplicaitons:
+    input:
+        asmWH="WH.assemblies.fasta",
+        ref="duplications.fasta"
+    output:
+        WHm5="WH_dup.m5",
+    shell:
+        """
+        blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
+        """
+
+rule plot_seqs_on_dup:
+    input:
+        depth="dup_depth.tsv",
+        WHm5="WH_dup.m5"
+    output:
+        "seqsOnDup.png",
+    shell:
+        """
+        {utils}/plotDepth.py {input.depth} {output} --m5 {input.WHm5}
+        """
+
+rule plot_seqs_on_cov:
+    input:
+        depth="depth.tsv",
+        WHm5="WH.m5"
+    output:
+        "seqs.png",
+    shell:
+        """
+        {utils}/plotDepth.py {input.depth} {output} --m5 {input.WHm5}
+        """
+
 
 
 #
@@ -525,25 +606,8 @@ rule summary:
     shell:
         """
         {base2}/summary.py
-        cat truth.matrix >> {output.summary}
         """
 
-
-'''
-# I moved this to ABP1
-# makes a gephi version of the plot, 
-# much nice imo 
-#
-rule gephi:
-    input:
-        combine='WH.assemblies.fasta'
-    output:
-        pdf='mi.cuts.gml.pdf'
-    shell:
-        """
-        {base2}/gephi/gephi.sh
-        """
-'''
 
 
 # pdf='mi.cuts.gml.pdf',
@@ -552,11 +616,13 @@ rule final:
         combine='WH.assemblies.fasta',
         summary="summary.txt",
         truth="truth/README.txt",
+        seqPNG="seqs.png",
+        dupPND="seqsOnDup.png",
     output: 'PSV2_done'
     shell:
-        '''
+        """
         touch {output}
-        '''
+        """
 #-----------------------------------------------------------------------------------------------------#
 
 

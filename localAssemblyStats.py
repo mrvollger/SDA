@@ -24,22 +24,55 @@ def main():
     out = ""
     header = ""
     LAS = open(localAssemblyDirectories)
-    
+    dfs = [] 
     for idx, directory in enumerate(LAS):
-        temp = LocalAssembly(directory, psvGraphLoc, psvURL)
-        out += str(temp)
-        if(idx == 0 ):
-            header = temp.getHeader()
+        LA = LocalAssembly(directory, psvGraphLoc, psvURL).asPD()
+        dfs.append(LA)
+        print(type(LA), idx)
+        #if(idx == 20):
+        #    break
+        #out += str(temp)
+        #if(idx == 0 ):
+        #    header = temp.getHeader()
         #if(idx == 5): break
     
     #    
     # create df
     #
-    out = header + out
-    dataStream = StringIO(out)
-    df = pd.read_csv(dataStream, sep="\t", header = 0)
+    df = pd.concat(dfs, axis=0, ignore_index=True)
+    # get a list of columns
+    cols = list(df)
+    length = len(cols)
+    # move the column to head of list using index, pop and insert
+    cols.insert(0, cols.pop(cols.index('numOfPSVs')))
+    cols.insert(0, cols.pop(cols.index('copies_in_reference')))
+    cols.insert(0, cols.pop(cols.index('number_of_CC_groups')))
+    cols.insert(0, cols.pop(cols.index('CC_ID')))
+    cols.insert(0, cols.pop(cols.index('Status')))
+    cols.insert(0, cols.pop(cols.index('region_in_falcon')))
+    # move the cc matrix to the back:
+    counter = 0
+    while(True):
+        key = str(counter) + "."
+        if(key == "0."):
+            key = "copy=>"
+        if(key not in cols):
+            print("done changing cols", key)
+            break
+        cols.insert(length-1, cols.pop(cols.index(key)))
+        counter += 1
+
+    print(cols)
+    # reorder the columns 
+    df = df.loc[:, cols]
+
+
+    #out = header + out
+    #print(out)
+    #dataStream = StringIO(out)
+    #df = pd.read_csv(dataStream, sep="\t", header = 0)
     # sort the way I want it sorted
-    df = df.sort_values(['Status', 'region_in_falcon', "CC_ID"], ascending=[0, 1, 1])
+    #df = df.sort_values(['Status', 'region_in_falcon', "CC_ID"], ascending=[0, 1, 1])
 
     # 
     # write to tsv

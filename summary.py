@@ -54,11 +54,13 @@ pos = nx.get_node_attributes(g, "pos")
 LA = LocalAssembly.LocalAssembly(cwd)
 df = LA.asPD()
 row = df.iloc[0]
+#print(row)
 region = row[ "region_in_falcon" ]
 copies = row[ "copies_in_reference" ]
 numAsm = row["number_of_psv_assemblies"]
 numCC =  row["number_of_CC_groups"]
 refRegions = row["refRegions"]
+print(refRegions)
 mysplit = refRegions.split(";")
 refRegions = ""
 for idx, reg in enumerate(mysplit):
@@ -66,14 +68,22 @@ for idx, reg in enumerate(mysplit):
     if( (idx + 1) % 3 == 0 ):
         refRegions += "\n"
 
-headerList =[ "CC_ID", "Status","numOfPSVs","length", 
+notHeader =[ "number_of_psv_assemblies", "region_in_falcon", "copies_in_reference", "number_of_CC_groups",
+        "refRegions", "length", "psvURL"]
+notused=["CC_ID", "Status","numOfPSVs","length", 
                 "num_of_sam_reads",
                 "averagePerID", "averageLength", 
-                "bestPerID", "bestLength", "BestRegionInTheHumanReference"]
-df = df[headerList] 
+                "bestPerID", "bestLength", "BestRegionInTheHumanReference", "TruthMatrix"]
+#df = df[headerList]
+df.drop(notHeader, axis=1, inplace=True)
 #df = df[df["Status"] != "Failed"]
 df = df.sort_values(["Status", "CC_ID"])
 pd.set_option('display.width', 200)
+df=df.rename(columns = {'BestRegionInTheHumanReference':'BestInRef'})
+df=df.rename(columns = {"num_of_sam_reads":'reads'})
+df=df.rename(columns = {"averageLength":'aveLen'})
+df=df.rename(columns = {"averagePerID":'avePerID'})
+df=df.rename(columns = {"bestLength":'bestLen'})
 
 text = '''region: {}
 copies: {}

@@ -1,6 +1,7 @@
 #!/bin/env python
 import numpy as np
 import matplotlib.pyplot as plt
+#import matplotlib.ticker.FuncFormatter
 from sklearn.mixture import GaussianMixture
 import argparse 
 
@@ -37,10 +38,28 @@ first = np.array(first)
 truepos = np.array(truepos)
 
 
+plt.rc('font', family='serif')
 
+fig, ax = plt.subplots( figsize=(16,9) )
+prime, = plt.plot(truepos, first, 'o', color="black", markeredgewidth=0.0, markersize=3, label = "most frequent base pair")
+sec, = plt.plot(truepos, second,'o', color="red",   markeredgewidth=0.0, markersize=3, label = "second most frequent base pair")
+ax.set_xlabel('BP Position')
+ax.set_ylabel('Depth')
 
-plt.plot(truepos, first, 'bo')
-plt.plot(truepos, second, 'ro')
+ylabels = [format(label, ',.0f') for label in ax.get_yticks()]
+xlabels = [format(label, ',.0f') for label in ax.get_xticks()]
+ax.set_yticklabels(ylabels)
+ax.set_xticklabels(xlabels)
+
+# Hide the right and top spines
+ax.spines["right"].set_visible(False)
+ax.spines["top"].set_visible(False)
+# Only show ticks on the left and bottom spines
+ax.yaxis.set_ticks_position('left')
+ax.xaxis.set_ticks_position('bottom')
+
+plt.legend()
+
 plt.savefig('threshold.png')
 
 exit(0)

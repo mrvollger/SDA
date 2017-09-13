@@ -32,9 +32,9 @@ MAXCOV = int(os.environ.get("MAXCOV", "50"))
 # only consider collapsed sites
 MINTOTAL = int(os.environ.get("MINTOTAL", "100"))
 CMPTOREF = os.environ.get("CMPTOREF", "TRUE")
-MINCOV=30
-MAXCOV=50
-MINTOTAL=100
+#MINCOV=30
+#MAXCOV=50
+#MINTOTAL=100
 print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
 rule master:	
@@ -74,24 +74,25 @@ elif(os.path.exists("reads.orig.fasta")):
         shell: 
             '{blasr} {input.basreads} {input.ref} -sam  -mismatch 3 -insertion 9 -deletion 9 -nproc 4 -out /dev/stdout -minMapQV 30 -minAlignLength 500 -preserveReadTitle | samtools view -bS - | samtools sort -T tmp -o {output}'
 
-elif(os.path.exists("reads.sequal.bam")):
-    rule realign_reads_sequal:
+elif(os.path.exists("reads.fofn")):
+    rule get_reads_that_map:
         input:
-            basreads='reads.sequal.bam', 
+            basreads='reads.fofn', 
             ref='ref.fasta'
         output:
             "reads.bam"
         threads: 8
         shell: 
             """
-            {pitchfork} blasr --bam  \
-                    --mismatch 3 --insertion 9 --deletion 9 \
-                    --nproc {threads} --out temp.bam \
-                    --minAlignLength 500 --preserveReadTitle \
-                     {input.basreads} {input.ref}
-                     samtools sort -T tmp temp.bam > reads.bam
-                     rm temp.bam
+            {blasr} -sam -preserveReadTitle -clipping subread -out /dev/stdout \
+                    -nproc {threads} \
+                    -mismatch 3 -insertion 9 -deletion 9 \
+                    -minAlignLength 1000 -minMapQV 30 \
+                     {input.basreads} {input.ref} | \
+                     samtools view -S -b -h -F 4 - | \
+                     samtools sort -m 4G -T tmp -o {output}
             """
+
 else:
     print("NO INPUT READS!!!")
 
@@ -143,7 +144,7 @@ rule hetProfile:
     input:
         png="depthProfile.png",
         reads="reads.bam",
-        ref="ref.fasta"	
+        ref="ref.fasta"	,
     output: 
         hetsnv="hetProfile/assembly.consensus.fragments.snv",
         hetvcf="hetProfile/assembly.consensus.nucfreq.vcf",
@@ -192,7 +193,7 @@ rule SNVtable_to_SNVmatrix:
     shell:
        '{scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvsPos} --mat {output.mat}'  
 
-'''
+#'''
 #
 # create duplicaitons.fasta
 # might be a bad idea, I am not sure I am recreating the correct dups
@@ -206,7 +207,7 @@ rule duplicationsFasta1:
     threads: 8
     shell:
         """
-        blasr {input.dupref} {GRCh38} -nproc {threads} -sa {sa} -sam -bestn 30 -out {output.dupsam}
+        {blasr} {input.dupref} {GRCh38} -nproc {threads} -sa {sa} -sam -bestn 30 -out {output.dupsam}
         """
 
 rule duplicationsFasta2:
@@ -228,7 +229,30 @@ rule duplicationsFasta3:
         """
         samtools faidx {GRCh38} `cat {input.duprgn}` > {output.dup}
         """
-'''
+
+rule depthOnDuplications:
+    input:
+        reads="reads.fasta",
+        ref = "duplications.fasta",
+    output:
+        bam = "reads.dup.bam",
+        depth="dup_depth.tsv",
+    threads:8
+    shell:
+        """
+        {blasr} -sam -minMapQV 30 \
+                -mismatch 3 -insertion 9 -deletion 9 \
+                -nproc {threads} -out /dev/stdout \
+                -minAlignLength 500 -preserveReadTitle -clipping subread \
+                {input.reads} {input.ref} | \
+                samtools view -bSh -F 4 - | \
+                samtools sort -T tmp -o {output.bam}
+        
+        samtools depth -aa {output.bam} > {output.depth}
+
+        """
+
+#'''
 
 
 #
@@ -239,7 +263,8 @@ rule duplicationsFasta3:
 MAX_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.max_identity.bed"
 MEAN_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.mean_identity.bed"
 
-if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta") > 0 ):
+#if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta") > 0 ):
+if(True):
     rule realignReads_to_Dups:
         input:
             "reads.fasta",
@@ -399,6 +424,7 @@ rule gephi:
 rule startPSV2:
     input: 
         dynamic("group.{n}.vcf"),
+        depth="dup_depth.tsv",
         maxx = "dup_max.intersect",
         pdf='mi.cuts.gml.pdf',
         mean = "dup_mean.intersect"
