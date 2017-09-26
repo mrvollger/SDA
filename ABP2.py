@@ -49,6 +49,7 @@ rule makeGroupDirs:
         tag='group.{n}/group.{n}'
     shell:
         """
+        rm -rf {output.group} # the assemblies will not re run properlly unless it starts fresh 
         mkdir -p {output.group} 
         echo "{output.tag}" >  {output.tag} 
         """
@@ -105,11 +106,12 @@ rule whatsHap:
         hap= 'group.{n}/haplotagged.bam',
         hapH1= 'group.{n}/H1.WH.sam',
         hapH2= 'group.{n}/H2.WH.sam'
-    threads: 1000 # for some reason loading this env multiple times breaks it, so stop from parallel exe
+    threads: 1 # for some reason loading this env multiple times breaks it, so stop from parallel exe
+                # this should no longer be nessisary as whatshap is installed in the new anaconda
     shell:
         """
         source {base2}/env_whatshap.cfg 
-        source activate whatshap 
+        #source activate whatshap  # this should no longer be nessisary as whatshap is installed in the new anaconda
         whatshap haplotag -o  {output.hap} --reference ref.fasta {input.hapvcf} {input.hapbam} 
         samtools view -h -o - {output.hap} | grep -E "^@|HP:i:1" >  {output.hapH1} 
         samtools view -h -o - {output.hap} | grep -E "^@|HP:i:2" >  {output.hapH2}
@@ -365,6 +367,7 @@ rule quiverFromBam:
 if(os.path.exists("duplications.fasta")):
     rule newName:
         input:
+            "duplications.fasta"
         output:
             dup="duplications.fixed.fasta",
         shell:
@@ -520,7 +523,8 @@ else:
 #
 rule removeEmptyAsm:
     input:
-        eMark=expand( 'group.{ID}/Mark.best.m4', ID=IDS),
+        # commenting the following line should remove Marks partitioning script from the required assembly
+        #eMark=expand( 'group.{ID}/Mark.best.m4', ID=IDS),
         eWH=expand( 'group.{ID}/WH.best.m4',   ID=IDS),
         e5WH=expand( 'group.{ID}/WH.best.m5',   ID=IDS),
         esam=expand( 'group.{ID}/WH.{ID}.sam',   ID=IDS),
@@ -533,16 +537,16 @@ rule removeEmptyAsm:
         touch {output}
         """
 
+#cat group.*/Mark.assembly.consensus.fasta > {output.asmMark} || > {output.asmMark}
 rule combineAsm:
     input:
         remove='removeEmpty', 
     output: 
         asmWH='WH.assemblies.fasta',
-        asmMark='Mark.assemblies.fasta'
+        #asmMark='Mark.assemblies.fasta'
     shell:
         """
         rm {input.remove}
-        cat group.*/Mark.assembly.consensus.fasta > {output.asmMark} || > {output.asmMark}
         cat   group.*/WH.assembly.consensus.fasta > {output.asmWH}   || > {output.asmWH}
         """
 
@@ -570,6 +574,38 @@ rule map_asms_to_duplicaitons:
         blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
         """
 
+# old asm.bed file
+'''
+rule bedForGRcH38:
+    input:
+        WHm5="WH_dup.m5",
+    output:
+        asmbed="asm.bed"
+    run:
+        import re
+        rtn = ""
+        m5 = open(input["WHm5"])
+        for line in m5:
+            token = line.strip().split(" ")
+            key = token[5]
+            temp = re.split(":|-", key)
+            chr = temp[0]
+            start = int(temp[1])
+            end = int(temp[2])
+            contig = token[0]
+            mstart = int(token[7])
+            mend = int(token[8])
+            diff = mend - mstart 
+            perID = float(token[11])/(float(token[11]) + float(token[12]))
+            realStart = start + mstart
+            realEnd = realStart + diff
+            rtn += "{}\t{}\t{}\t{}\t{}\t{}\n".format(chr, realStart, realEnd, perID, contig, diff) 
+        
+        f = open(output["asmbed"], "w+")
+        f.write(rtn)
+'''
+
+
 rule plot_seqs_on_dup:
     input:
         depth="dup_depth.tsv",
@@ -590,6 +626,20 @@ rule plot_seqs_on_cov:
     shell:
         """
         {utils}/plotDepth.py {input.depth} {output} --m5 {input.WHm5}
+        """
+
+#
+#
+#
+rule bedForTrack:
+    input:
+        bed="ref.fasta.bed",
+        whdup="WH_dup.m5",
+    output:
+        asmbed="asm.bed",
+    shell:
+        """
+        bedForABP.py
         """
 
 
@@ -618,6 +668,7 @@ rule final:
         truth="truth/README.txt",
         seqPNG="seqs.png",
         dupPND="seqsOnDup.png",
+        asmbed="asm.bed",
     output: 'PSV2_done'
     shell:
         """

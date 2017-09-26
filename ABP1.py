@@ -37,8 +37,16 @@ CMPTOREF = os.environ.get("CMPTOREF", "TRUE")
 #MINTOTAL=100
 print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
-rule master:	
-    input: 'PSV1_done'
+rule all:	
+    input:
+        dupbed="ref.fasta.bed",
+        depth="dup_depth.tsv",
+        png="depthProfile.png",
+        thresholdPng="hetProfile/threshold.png",
+        pdf='mi.cuts.gml.pdf',
+        mean = "dup_mean.intersect",
+        maxx = "dup_max.intersect",
+        groups=dynamic("group.{n}.vcf"),
     message: 'Running PSV1'
 
 #
@@ -61,8 +69,14 @@ if(os.path.exists("reads.orig.bam")):
             ref='ref.fasta'
         output:
             "reads.bam"
+        threads: 8
         shell: 
-            '{blasr} {input.basreads} {input.ref} -sam  -mismatch 3 -insertion 9 -deletion 9 -nproc 4 -out /dev/stdout -minMapQV 30 -minAlignLength 2000 -preserveReadTitle | samtools view -bS - | samtools sort -T tmp -o {output}'
+            '{blasr} {input.basreads} {input.ref} -sam \
+                    -mismatch 3 -insertion 9 -deletion 9 \
+                    -nproc {threads} -out /dev/stdout -minAlignLength 1000 \
+                    -preserveReadTitle | \
+                    samtools view -bS - | \
+                    samtools sort -T tmp -o {output}'
 
 elif(os.path.exists("reads.orig.fasta")):
     rule realign_reads_fasta:
@@ -72,7 +86,12 @@ elif(os.path.exists("reads.orig.fasta")):
         output:
             "reads.bam"
         shell: 
-            '{blasr} {input.basreads} {input.ref} -sam  -mismatch 3 -insertion 9 -deletion 9 -nproc 4 -out /dev/stdout -minMapQV 30 -minAlignLength 500 -preserveReadTitle | samtools view -bS - | samtools sort -T tmp -o {output}'
+            '{blasr} {input.basreads} {input.ref} -sam  \
+                    -mismatch 3 -insertion 9 -deletion 9 \
+                    -nproc 4 -out /dev/stdout \
+                    -minAlignLength 1000 -preserveReadTitle | \
+                    samtools view -bS - | \
+                    samtools sort -T tmp -o {output}'
 
 elif(os.path.exists("reads.fofn")):
     rule get_reads_that_map:
@@ -87,7 +106,7 @@ elif(os.path.exists("reads.fofn")):
             {blasr} -sam -preserveReadTitle -clipping subread -out /dev/stdout \
                     -nproc {threads} \
                     -mismatch 3 -insertion 9 -deletion 9 \
-                    -minAlignLength 1000 -minMapQV 30 \
+                    -minAlignLength 1000 \
                      {input.basreads} {input.ref} | \
                      samtools view -S -b -h -F 4 - | \
                      samtools sort -m 4G -T tmp -o {output}
@@ -142,7 +161,6 @@ rule depthProfile:
 #
 rule hetProfile:
     input:
-        png="depthProfile.png",
         reads="reads.bam",
         ref="ref.fasta"	,
     output: 
@@ -153,9 +171,21 @@ rule hetProfile:
         mkdir -p hetProfile
         pushd hetProfile
         {scriptsDir}/BamToSNVTable.sh ../{input.reads} ../{input.ref} 0 0
+        popd
+        """
+rule thresholdProfile:
+    input:
+        hetsnv="hetProfile/assembly.consensus.fragments.snv",
+        hetvcf="hetProfile/assembly.consensus.nucfreq.vcf",
+    output: 
+        thresholdPng="hetProfile/threshold.png",
+    shell:
+        """
+        pushd hetProfile
         autoThreshold.py
         popd
         """
+#
 #
 # Given the alignments, count the frequency of each base at every
 # position, and estimate the SNVs from this frequency. 
@@ -164,7 +194,6 @@ rule hetProfile:
 rule create_SNVtable_from_reads:
     input:
         hetsnv="hetProfile/assembly.consensus.fragments.snv",
-        png="depthProfile.png",
         reads="reads.bam",
         ref="ref.fasta"	
     output: 
@@ -197,8 +226,11 @@ rule SNVtable_to_SNVmatrix:
 #
 # create duplicaitons.fasta
 # might be a bad idea, I am not sure I am recreating the correct dups
-GRCh38="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.no_alts.fasta"
-sa="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.no_alts.fasta.sa"
+# I swithced from using no alts to using alts, and this should be correct now
+#
+GRCh38="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta"
+fai   ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.fai"
+sa    ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.sa"
 rule duplicationsFasta1:
     input:
         dupref="ref.fasta"
@@ -207,7 +239,8 @@ rule duplicationsFasta1:
     threads: 8
     shell:
         """
-        {blasr} {input.dupref} {GRCh38} -nproc {threads} -sa {sa} -sam -bestn 30 -out {output.dupsam}
+        {blasr} {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
+                -sam -bestn 30 -out {output.dupsam} -minMatch 15
         """
 
 rule duplicationsFasta2:
@@ -220,14 +253,45 @@ rule duplicationsFasta2:
         ~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >10000 && $9 > 0.85) print $1":"$2"-"$3 }}' > {output.duprgn}
         """
 
+rule rgnToBed:
+    input:
+        duprgn="ref.fasta.rgn"
+    output:
+        dupbed="ref.fasta.bed"
+    run:
+        records = open(input[0]).readlines()
+        rtn = ""
+        for rec in records:
+            temp = rec.strip().split(":")
+            chro = temp[0]
+            nums = temp[1].split("-")
+            start = nums[0]
+            end   = nums[1]
+            rtn += "{}\t{}\t{}\n".format(chro, start, end)
+        f = open(output[0], "w+")
+        f.write(rtn)
+        f.close()
+
+rule slopBed:
+    input:
+        dupbed="ref.fasta.bed"
+    output:
+        duplong="ref.fasta.long.bed"
+    shell:
+        """
+        bedtools slop -i {input.dupbed} -g {fai} -b 100000 > {output.duplong}
+        """
+
 rule duplicationsFasta3:
     input:
-        duprgn="ref.fasta.rgn",
+        duplong="ref.fasta.long.bed",
+        duprgn="ref.fasta.rgn"
     output:
         dup="duplications.fasta",
     shell:
         """
-        samtools faidx {GRCh38} `cat {input.duprgn}` > {output.dup}
+        #samtools faidx {GRCh38} `cat {input.duprgn}` > {output.dup}
+        bedtools getfasta -fi {GRCh38} -bed {input.duplong} > {output.dup} 
         """
 
 rule depthOnDuplications:
@@ -240,8 +304,7 @@ rule depthOnDuplications:
     threads:8
     shell:
         """
-        {blasr} -sam -minMapQV 30 \
-                -mismatch 3 -insertion 9 -deletion 9 \
+        {blasr} -sam  \
                 -nproc {threads} -out /dev/stdout \
                 -minAlignLength 500 -preserveReadTitle -clipping subread \
                 {input.reads} {input.ref} | \
@@ -421,15 +484,18 @@ rule gephi:
 # stop it from doing that so I made a second file so I dont have to use dynamic, this second snakemake file
 # must be called by a master script or seperatly.
 #
+'''
 rule startPSV2:
     input: 
         dynamic("group.{n}.vcf"),
         depth="dup_depth.tsv",
         maxx = "dup_max.intersect",
         pdf='mi.cuts.gml.pdf',
-        mean = "dup_mean.intersect"
+        mean = "dup_mean.intersect",
+        dupbed="ref.fasta.bed",
+        png="depthProfile.png",
     output: "PSV1_done"
     shell: "touch {output}"
-
+'''
 
 

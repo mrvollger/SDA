@@ -48,7 +48,7 @@ class LocalAssembly:
         self.samReads()
         self.readIdentity()
         self.readTruthMatrix()
-
+        self.readBed()
 
     def basename(self):
         self.basename = self.mydir.split("/")[-1].strip()
@@ -182,6 +182,15 @@ class LocalAssembly:
                 self.bestLength.append("None")
                 self.averageLength.append("None")
 
+    def readBed(self):
+        self.bed = {}
+        bed = os.path.join(self.mydir, "duplications.bed")
+        if(os.path.exists(bed)):
+            records = open(bed).readlines()
+            for idx, rec in enumerate(records):
+                self.bed["copy" + str(idx+1) ] = rec
+
+
     def readAssemblies(self):
         self.ASMs = []
         self.lens = []
@@ -201,23 +210,23 @@ class LocalAssembly:
                     self.status.append("Success")
                     self.ASMs.append(asm.description)
                     # the 4: part removes len= part
-                    self.lens.append(asm.description.split(" ")[1][4:] )
+                    self.lens.append( len( asm.seq ) )
                     self.reads.append(asm.description.split(" ")[2] )
                     self.asmNumber += 1
                 elif( len(asm) > 1 ):
                     self.status.append("MultipleAsm")
                     self.ASMs.append("None")
-                    self.lens.append("None")
+                    self.lens.append(0)
                     self.reads.append("None")
                 else:
                     self.status.append("Failed")
                     self.ASMs.append("None")
-                    self.lens.append("None")
+                    self.lens.append(0)
                     self.reads.append("None")
             else:
                 self.status.append("Failed")
                 self.ASMs.append("None")
-                self.lens.append("None")
+                self.lens.append(0)
                 self.reads.append("None")
 
         self.CCNumber = len(self.ASMs)
@@ -265,7 +274,9 @@ class LocalAssembly:
             for key in vars(self):
                 rtn += str(key) + ":"  + str(vars(self)[key]) + "\n"
         else:
+            print(self.PSVs)
             for idx, asm in enumerate(self.ASMs):
+                print(idx)
                 psvs = self.PSVs[self.groups[idx]]
                 rtnList = [self.basename, self.dupNumber, self.asmNumber, 
                         self.CCNumber, 
