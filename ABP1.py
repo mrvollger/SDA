@@ -54,6 +54,7 @@ rule all:
 # likely to align a PSV as a mismatch rather than paired insertion and
 # deletion.
 #
+minaln="2000"
 if(os.path.exists("reads.orig.bam")):
     rule preprocess_reads:
         input:
@@ -73,7 +74,7 @@ if(os.path.exists("reads.orig.bam")):
         shell: 
             '{blasr} {input.basreads} {input.ref} -sam \
                     -mismatch 3 -insertion 9 -deletion 9 \
-                    -nproc {threads} -out /dev/stdout -minAlignLength 1000 \
+                    -nproc {threads} -out /dev/stdout -minAlignLength {minaln} \
                     -preserveReadTitle | \
                     samtools view -bS - | \
                     samtools sort -T tmp -o {output}'
@@ -89,7 +90,7 @@ elif(os.path.exists("reads.orig.fasta")):
             '{blasr} {input.basreads} {input.ref} -sam  \
                     -mismatch 3 -insertion 9 -deletion 9 \
                     -nproc 4 -out /dev/stdout \
-                    -minAlignLength 1000 -preserveReadTitle | \
+                    -minAlignLength {minaln} -preserveReadTitle | \
                     samtools view -bS - | \
                     samtools sort -T tmp -o {output}'
 
@@ -106,7 +107,7 @@ elif(os.path.exists("reads.fofn")):
             {blasr} -sam -preserveReadTitle -clipping subread -out /dev/stdout \
                     -nproc {threads} \
                     -mismatch 3 -insertion 9 -deletion 9 \
-                    -minAlignLength 1000 \
+                    -minAlignLength {minaln} \
                      {input.basreads} {input.ref} | \
                      samtools view -S -b -h -F 4 - | \
                      samtools sort -m 4G -T tmp -o {output}
