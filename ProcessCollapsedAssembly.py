@@ -3,6 +3,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 import json
+import glob
 from pprint import pprint
 
 #
@@ -30,7 +31,12 @@ configfile: "abp_on_denovo.json"
 
 
 
-localrules: all, MergeCoverage, FaiToBed, getCoverageStats, GenerateMinAndMax, bedForCollapses, MergeBed
+localrules: all, MergeCoverage, FaiToBed, getCoverageStats, 
+			GenerateMinAndMax, bedForCollapses, MergeBed, 
+			LocalAssembliesBed, LocalAssembliesRegions,
+			LocalAssembliesRef,
+			LocalAssembliesBam,
+
 
 rule all:
 	input:
@@ -38,6 +44,8 @@ rule all:
 		stats="coverage/all.stats.txt",
 		minmax="MinMax.sh",
 		collapses="collapses.bed",
+		regions="LocalAssemblies/regions.txt",
+		bams=dynamic("LocalAssemblies/{region}/reads.orig.bam"),
 		#asmSA=config["asm"] + ".sa",
 		#regions="coverage/regions.bed",
 		#split=dynamic("reads.{index}.fofn"),
@@ -171,20 +179,22 @@ rule MergeBed:
 	shell:
 		"""
 		#  contig, pos, merge the input files
-		sort -k1,1 -k2,2n -m {input.coverage} > {output.sorted}
+		echo $TMPDIR
+		sort -T $TMPDIR -k1,1 -k2,2n -S 8G -m {input.coverage} > {output.sorted}
 		"""
+
+#
+# merge the coverage files using bedtools
+#
 '''
-rule SortBed:
+rule PythonMergeBed:
 	input:
-		all="coverage/all.bed",
+		coverage=dynamic("coverage/coverage.{index}.bed"),
 	output:
 		sorted="coverage/all.sorted.bed",
-	shell:
-		"""
-		# bedtools sort is actually slow and bad compared ot unix, so this is better
-		sort -k 1,1 -k2,2n {input.all} > {output.sorted}
-		"""
-'''
+	run:
+'''		
+
 rule MergeCoverage:
 	input:
 		sorted="coverage/all.sorted.bed",
@@ -241,25 +251,128 @@ rule bedForCollapses:
 	input:
 		combined="coverage/all.sorted.merged.bed",
 		json="MinMax.json",
+		fai=config["asmfai"],
 	output:
-		temp = "collapses/unmerged.collapses.bed",
+		temp = "coverage/unmerged.collapses.bed",
 		collapses="collapses.bed",
 	run:
 		cov = json.load(open(input["json"]))
-		test = "coverage/regions.bed"
-		bed = pd.read_csv(test, sep = "\t", header=None, names=['contig', 'start', 'end'])
-		print(bed["contig"].unique())
 		bed = pd.read_csv(input["combined"], sep = "\t", header=None, names=['contig', 'start', 'end', 'coverage'])
-		print(bed["contig"].unique())
+		# get coverage stats per contig, this will be used later for filtering 
 		coverageByContig = bed.groupby('contig')['coverage'].describe()
-		print(coverageByContig)
+	 	# the index is the contig, going to make it a colunm so I can merge
+		coverageByContig['contig'] = coverageByContig.index
+		
+		# require high enough coverage
 		bed = bed.ix[ bed["coverage"] >= cov["MINTOTAL"] ]
 		bed.to_csv(output["temp"], header=False, index=False, sep="\t" )
-		shell("bedtools merge -i {output.temp} -d 1001 -c 4 -o mean > {output.collapses}")
+		# create a new file that has regions within 1001 base pairs of one another merged, changed -d 1001 to -d 1
+		shell("bedtools merge -i {output.temp} -d 1 -c 4 -o mean > {output.collapses}")
+	
+		# read in the merged set
+		merged = pd.read_csv(output["collapses"], sep = "\t", header=None, names=['contig', 'start', 'end', 'coverage'])
+		# read in the length of the contigs
+		fai = pd.read_csv(input["fai"], sep = "\t", header=None, names=['contig', 'length', 'OFFSET', 'LINEBASES', "LINEWIDTH"])
+		fai = fai[["contig", "length"]]
 		
-		merged = pd.read_csv(output["collapses"], sep = "\t", header=None)
-		merged["length"] = merged[2] - merged[1]
-		merged=merged.ix[merged[3]>=cov["MINTOTAL"]]
-		#merged=merged.ix[merged["length"]>=3000]
+		# this adds the contigs length to the collapse 
+		merged = pd.merge(merged, fai, on='contig', how='outer')
+		# require the collapse to be within 50000 bp of the ned of a contig
+		merged["distFromEnd"]=pd.concat([merged["start"], merged["length"]-merged["end"]], axis=1).min(axis=1)
+		merged = merged.ix[merged["distFromEnd"] <= 50000]
+		# require the contig be over a certain length, 100000
+		merged = merged.ix[ merged["length"] >= 300000 ]
+
+
+		# merge the previously calcualted contig stats into each row 
+		merged = pd.merge(merged, coverageByContig, on='contig', how ='outer' )
+
+		# calcualte collapse length	
+		merged["clength"] = merged["end"] - merged["start"]
+		merged=merged.ix[merged["coverage"]>=cov["MINTOTAL"]]
+		# require a collpase over 10000 base pairs
+		merged=merged.ix[merged["clength"]>=10000]
+		# write to file
 		merged.to_csv(output["collapses"], header=False, index=False, sep="\t" )
+
+
+
+rule LocalAssembliesRegions:
+	input:
+		collapses="collapses.bed",
+	output:
+		#refs=dynamic("LocalAssemblies/{region}/ref.fasta"),
+		regions="LocalAssemblies/regions.txt",
+	run:
+		df = pd.read_csv(input["collapses"], sep="\t", header=None)
+		df["start"] = df[1]/100
+		df["start"] = df.start.map(int)
+		df["end"] = df[2]/100
+		df["end"] = df.end.map(int)
+		df["ID"] = df[0] + "_" + df.start.map(str) + "_" + df.end.map(str) + "/"
+		df[["ID"]].to_csv(output["regions"], header=False, index=False, sep="\t")
+
+
+
+rule LocalAssembliesBed:
+	input:
+		collapses="collapses.bed",
+		regions="LocalAssemblies/regions.txt",
+	output:
+		bed=dynamic("LocalAssemblies/{region}/orig.bed"),
+		rgn=dynamic("LocalAssemblies/{region}/orig.rgn"),
+	run:
+		rfile = open(input["regions"])
+		dirsForShell = ""
+		regions=[]
+		for line in rfile:
+			region = "LocalAssemblies/" + line.strip()
+			regions.append(region)
+			dirsForShell += region + " "
+		shell("mkdir -p " + dirsForShell)
+		
+		# create reference and bed file
+		cfile = open(input["collapses"]).readlines()
+		for line, region in zip(cfile,regions):
+			line = line.split("\t")
+			seq = "{}:{}-{}".format(line[0], int(float(line[1])), int(float(line[2])) )
+			cmd = "echo " + "{}\t{}\t{}".format(line[0], int(float(line[1])), int(float(line[2])))+" > "+region+"orig.bed;"
+			cmd += "echo " + seq + " > " + region + "orig.rgn;"
+			shell(cmd)
+
+
+rule LocalAssembliesRef:
+	input:
+		rgn="LocalAssemblies/{region}/orig.rgn",
+		asm=config["asm"],
+	output:
+		refs="LocalAssemblies/{region}/ref.fasta",
+	#params:
+	#	sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
+	run:
+		region = open(input["rgn"]).read().strip()
+		cmd = "samtools faidx " + input["asm"] + " " + region + " > " + output["refs"]
+		shell(cmd)
+
+rule LocalAssembliesBam:
+	input:
+		refs="LocalAssemblies/{region}/ref.fasta",
+		rgn="LocalAssemblies/{region}/orig.rgn",
+	output:
+		bams="LocalAssemblies/{region}/reads.orig.bam"
+	#params:
+	#	sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
+	run:
+		region = open(input["rgn"]).read().strip() 
+		for idx, bam in enumerate(glob.glob("alignments/align.*.bam")):
+			out = output["bams"] + "." + str(idx) + ".bam"
+			cmd = "samtools view -b {} {} > {}".format(bam, region, out)
+			shell(cmd)	
+
+		mergeCmd = "samtools merge {} {}.*.bam".format(output["bams"],  output["bams"])
+		shell(mergeCmd)
+		# remove the temp files 
+		shell("rm LocalAssemblies/*/reads.orig.bam.*.bam")
+
+
 

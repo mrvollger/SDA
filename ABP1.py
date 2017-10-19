@@ -27,27 +27,38 @@ pitchfork="source /net/eichler/vol2/home/mvollger/projects/builds/pitchfork/setu
 
 
 #settings
-MINCOV = int(os.environ.get("MINCOV", "30"))
-MAXCOV = int(os.environ.get("MAXCOV", "50"))
-# only consider collapsed sites
-MINTOTAL = int(os.environ.get("MINTOTAL", "100"))
-CMPTOREF = os.environ.get("CMPTOREF", "TRUE")
-#MINCOV=30
-#MAXCOV=50
-#MINTOTAL=100
-print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
+if(os.path.exists("coverage.json")):
+	configfile:
+		"coverage.json"	
+	MINCOV=config["MINCOV"]
+	MAXCOV=config["MAXCOV"]
+	MINTOTAL=config["MINTOTAL"]
+	print("Thresholds loaded from coverage.json")
+	rule all:	
+		input:
+			dupbed="ref.fasta.bed",
+			depth="dup_depth.tsv",
+			png="depthProfile.png",
+			thresholdPng="hetProfile/threshold.png",
+			pdf='mi.cuts.gml.pdf',
+			mean = "dup_mean.intersect",
+			maxx = "dup_max.intersect",
+			groups=dynamic("group.{n}.vcf"),
+		message: 'Running the frist half of ABP'
 
-rule all:	
-    input:
-        dupbed="ref.fasta.bed",
-        depth="dup_depth.tsv",
-        png="depthProfile.png",
-        thresholdPng="hetProfile/threshold.png",
-        pdf='mi.cuts.gml.pdf',
-        mean = "dup_mean.intersect",
-        maxx = "dup_max.intersect",
-        groups=dynamic("group.{n}.vcf"),
-    message: 'Running PSV1'
+else:
+	MINCOV = int(os.environ.get("MINCOV", "30"))	
+	MAXCOV = int(os.environ.get("MAXCOV", "50"))
+	# only consider collapsed sites
+	MINTOTAL = int(os.environ.get("MINTOTAL", "100"))
+	# if there is no min and max coverage only run the script up until the hetprofile part
+	rule all:	
+		input:
+			png="depthProfile.png",
+			thresholdPng="hetProfile/threshold.png",
+		message: 'Running only to generate the het profile, must include a coverage.json to run the full thing'
+
+print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
 #
 # This realigns reads with match/mismatch parameters that make it more
@@ -76,8 +87,8 @@ if(os.path.exists("reads.orig.bam")):
                     -mismatch 3 -insertion 9 -deletion 9 \
                     -nproc {threads} -out /dev/stdout -minAlignLength {minaln} \
                     -preserveReadTitle | \
-                    samtools view -bS - | \
-                    samtools sort -T tmp -o {output}'
+                    samtools view -bS -F 4  - | \
+                    samtools sort -m 4G -T tmp -o {output}'
 
 elif(os.path.exists("reads.orig.fasta")):
     rule realign_reads_fasta:
@@ -91,8 +102,8 @@ elif(os.path.exists("reads.orig.fasta")):
                     -mismatch 3 -insertion 9 -deletion 9 \
                     -nproc 4 -out /dev/stdout \
                     -minAlignLength {minaln} -preserveReadTitle | \
-                    samtools view -bS - | \
-                    samtools sort -T tmp -o {output}'
+                    samtools view -bS -F 4 - | \
+                    samtools sort -m 4G -T tmp -o {output}'
 
 elif(os.path.exists("reads.fofn")):
     rule get_reads_that_map:
@@ -109,7 +120,7 @@ elif(os.path.exists("reads.fofn")):
                     -mismatch 3 -insertion 9 -deletion 9 \
                     -minAlignLength {minaln} \
                      {input.basreads} {input.ref} | \
-                     samtools view -S -b -h -F 4 - | \
+                     samtools view -bS -F 4 - | \
                      samtools sort -m 4G -T tmp -o {output}
             """
 
@@ -233,16 +244,18 @@ GRCh38="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta"
 fai   ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.fai"
 sa    ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.sa"
 rule duplicationsFasta1:
-    input:
-        dupref="ref.fasta"
-    output:
-        dupsam="ref.fasta.sam",
-    threads: 8
-    shell:
-        """
-        {blasr} {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
-                -sam -bestn 30 -out {output.dupsam} -minMatch 15
-        """
+	input:
+		dupref="ref.fasta",
+		# I want the thresholding to run before the duplicaitons part becuase it takes forever
+		thresholdPng="hetProfile/threshold.png",
+	output:
+		dupsam="ref.fasta.sam",
+	threads: 8
+	shell:
+		"""
+		blasr {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
+				-sam -bestn 30 -out {output.dupsam} -minMatch 15 -maxMatch 20
+		"""
 
 rule duplicationsFasta2:
     input:
@@ -317,7 +330,6 @@ rule depthOnDuplications:
         """
 
 #'''
-
 
 #
 # Set up the ground truth if it exists.  Map the collapsed sequence
@@ -470,14 +482,14 @@ rule makeCutsInPSVgraph:
 # much nice imo 
 #
 rule gephi:
-    input:
-        cuts='mi.cuts.gml'
-    output:
-        pdf='mi.cuts.gml.pdf'
-    shell:
-        '''
-        {base2}/gephi/gephi.sh
-        '''
+	input:
+		cuts='mi.cuts.gml'
+	output:
+		pdf='mi.cuts.gml.pdf',
+	run:
+		shell( base2 + "/gephi/gephi.sh" )
+		collapse = os.path.basename(os.getcwd()) + ".pdf"
+		shell("cp " + output["pdf"] + " " + collapse)
 
 
 #

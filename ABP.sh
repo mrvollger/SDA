@@ -11,18 +11,9 @@ base2="/net/eichler/vol2/home/mvollger/projects/abp"
 
 NPROC=$(nproc)
 
-#NPROC=4
-
-
-# executes part 1 or part 2 or all of assembly by phasing
-if [ "$1" == "PSV1" ]; then
-    echo "Running PSV1 only"
-elif [ "$1" == "PSV2" ]; then
-    echo "Running PSV2 only"
-else
-    regionsDir=$1
-    pushd $regionsDir
-fi 
+regionsDir=$1
+pushd $regionsDir
+ 
 
 
 # these are the outputs of snakefiles, by getting rid of them I ensure that is checks that 
@@ -41,7 +32,8 @@ fi
 #
 # One of the programs I use (whatshap) requires a bunch of things, and I made a conda env
 # to handle those things, but I have to check to see if you have it installed
-#
+# this should no longer be nessisary, whatshap is installed in one of our modules
+# 
 if [ -d $HOME/.conda/envs/whatshap ]; then
      echo "conda env exists, continuing"
 else
@@ -53,13 +45,13 @@ fi
 # run the pipeline
 if [ "$1" == "PSV1" ]; then
     # creats the partitioned groups from reads.orin.bam ref.fasta, and duplicaitons.fasta
-    snakemake -s $base2/ABP1.py
+    snakemake -p -s $base2/ABP1.py
 elif [ "$1" == "PSV2" ]; then
     # creats the assemblies from the output of PSV1.py
-    snakemake -s $base2/ABP2.py
+    snakemake -p -s $base2/ABP2.py
 else
     echo "Running PSV1 and PSV2"
-    snakemake --cores $NPROC -s $base2/ABP1.py && snakemake --cores $NPROC -s $base2/ABP2.py 
+    snakemake -p --cores $NPROC -s $base2/ABP1.py && snakemake -p --cores $NPROC -s $base2/ABP2.py 
     popd
 fi 
 

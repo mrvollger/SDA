@@ -321,7 +321,7 @@ rule bamFromAssembly:
             ~mchaisso/projects/blasr-repo/blasr/pbihdfutils/bin/samtobas {input.H2} {output.asmbas} -defaultToP6
 	        ~mchaisso/projects/blasr-repo/blasr/alignment/bin/blasr {output.asmbas} {input.asm} \
                 -clipping subread -sam -bestn 1 -out /dev/stdout  -nproc {threads} \
-                | samtools view -bS - | samtools sort -T tmp -o {output.asmbam}
+                | samtools view -bS - | samtools sort -m 4G -T tmp -o {output.asmbam}
 	        
             samtools index {output.asmbam}
         fi
@@ -423,9 +423,9 @@ if(os.path.exists("duplications.fasta")):
             else
                 {blasr} {input.preads} {input.dup} -bestn 1 -sam > {output.psam}
                 samtools view -b {output.psam} \
-                        | samtools sort -o {output.pbam}
+                        | samtools sort -m 4G -o {output.pbam}
                 #samtools view -S -b -o temp.bam {output.psam}
-                #samtools sort -o {output.pbam} temp.bam
+                #samtools sort -m 4G -o {output.pbam} temp.bam
                 samtools index {output.pbam}
                 #rm temp.bam
             fi
@@ -557,9 +557,11 @@ rule map_asms_to_ref:
         ref="ref.fasta"
     output:
         WHm5="WH.m5",
+        sam="WH.sam",
     shell:
         """
         blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
+        blasr -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
         """
 
 
@@ -569,42 +571,12 @@ rule map_asms_to_duplicaitons:
         ref="duplications.fasta"
     output:
         WHm5="WH_dup.m5",
+        sam="WH_dup.sam",
     shell:
         """
         blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
+        blasr -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
         """
-
-# old asm.bed file
-'''
-rule bedForGRcH38:
-    input:
-        WHm5="WH_dup.m5",
-    output:
-        asmbed="asm.bed"
-    run:
-        import re
-        rtn = ""
-        m5 = open(input["WHm5"])
-        for line in m5:
-            token = line.strip().split(" ")
-            key = token[5]
-            temp = re.split(":|-", key)
-            chr = temp[0]
-            start = int(temp[1])
-            end = int(temp[2])
-            contig = token[0]
-            mstart = int(token[7])
-            mend = int(token[8])
-            diff = mend - mstart 
-            perID = float(token[11])/(float(token[11]) + float(token[12]))
-            realStart = start + mstart
-            realEnd = realStart + diff
-            rtn += "{}\t{}\t{}\t{}\t{}\t{}\n".format(chr, realStart, realEnd, perID, contig, diff) 
-        
-        f = open(output["asmbed"], "w+")
-        f.write(rtn)
-'''
-
 
 rule plot_seqs_on_dup:
     input:
@@ -620,13 +592,47 @@ rule plot_seqs_on_dup:
 rule plot_seqs_on_cov:
     input:
         depth="depth.tsv",
-        WHm5="WH.m5"
+        WHm5="WH.m5",
+        sam="WH.sam",
     output:
         "seqs.png",
     shell:
         """
-        {utils}/plotDepth.py {input.depth} {output} --m5 {input.WHm5}
+        {utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
         """
+#
+# create a map of the coverage across the assembled duplications
+#
+rule coverageOnAsms:
+	input:
+		asm = "WH.assemblies.fasta",
+		ref = "ref.fasta",
+		reads = "reads.fasta",
+	output:
+		cov="asm_depth.tsv",
+		bam="reads_on_asm.bam",
+		refWH="refAndWH.fasta",
+	threads:8
+	shell:
+		"""
+		cat {input.ref} {input.asm} > refAndWH.fasta
+		{blasr} {input.reads} refAndWH.fasta -clipping soft -nproc {threads} -bestn 1 -sam -out /dev/stdout | \
+                samtools view -bS - | \
+				samtools sort -m 4G -o {output.bam} - 
+                samtools index {output.bam}
+		samtools depth -aa {output.bam} > {output.cov}
+		"""
+
+rule plotCovOnAsm:
+	input:
+		cov="asm_depth.tsv",
+	output:
+		plot="CoverageOnAsm.png",
+	shell:
+		"""
+		{utils}/plotDepth.py {input.cov} {output.plot}
+		"""
+
 
 #
 #
@@ -659,23 +665,98 @@ rule summary:
         """
 
 
-
+#
+#
+#
+rule miropeats:
+	input:
+		refWH="refAndWH.fasta",
+	output:
+		miro = "refWH.miro.pdf",
+	shell:
+		"""
+		miropeats -s 500 -onlyinter {input.refWH} > contig_compare
+		mv threshold500 refWH.miro.ps
+		ps2pdf refWH.miro.ps
+		"""
 # pdf='mi.cuts.gml.pdf',
 rule final:
-    input:
-        combine='WH.assemblies.fasta',
-        summary="summary.txt",
-        truth="truth/README.txt",
-        seqPNG="seqs.png",
-        dupPND="seqsOnDup.png",
-        asmbed="asm.bed",
-    output: 'PSV2_done'
-    shell:
-        """
-        touch {output}
-        """
+	input:
+		combine='WH.assemblies.fasta',
+		miro = "refWH.miro.pdf",
+		plot="CoverageOnAsm.png",
+		summary="summary.txt",
+		truth="truth/README.txt",
+		seqPNG="seqs.png",
+		dupPND="seqsOnDup.png",
+		asmbed="asm.bed",
+		plotReal="SeqsOnReal.png",
+	output: 'PSV2_done'
+	shell:
+		"""
+		touch {output}
+		"""
 #-----------------------------------------------------------------------------------------------------#
 
+if(os.path.exists("real.fasta")):
+	# create a map of the reads onto the real end results 
+	rule coverageOnReal:
+		input:
+			ref = "real.fasta",
+			reads = "reads.fofn",
+		output:
+			cov="real_depth.tsv",
+			bam="reads_on_real.bam",
+		threads:16
+		shell:
+			"""
+			{blasr} {input.reads} {input.ref} -bestn 1 -clipping soft -nproc {threads} -sam -out /dev/stdout \
+					| samtools view -bS -F 4 - | \
+					samtools sort -m 4G -o {output.bam} - 
+			
+			#source /net/eichler/vol24/projects/sequencing/pacbio/software/smrtanalysis/current/etc/setup.sh \
+			#		&& /net/eichler/vol24/projects/sequencing/pacbio/smrt-link/smrtcmds/bin/pbalign \
+			#		{input.reads} {input.ref} {output.bam} \
+			#		--nproc {threads} --algorithmOptions="--minRawSubreadScore 800 --bestn 1"
+			
+			samtools index {output.bam}
+			samtools depth -aa {output.bam} > {output.cov}
+			"""
+	rule map_asms_to_real:
+		input:
+			asmWH="WH.assemblies.fasta",
+			ref="real.fasta"
+		output:
+			WHm5="real.m5",
+			sam="real.sam",
+		shell:
+			"""
+			blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
+			blasr -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
+			"""
+
+
+	rule plotCovOnReal:
+		input:
+			cov="real_depth.tsv",
+			sam="real.sam",
+		output:
+			plot="SeqsOnReal.png",
+		shell:
+			"""
+			{utils}/plotDepth.py {input.cov} {output.plot} --sam {input.sam}
+			"""
+
+else:
+	rule FakeCovOnReal:
+		input:
+			asmWH="WH.assemblies.fasta",
+		output:
+			plot="SeqsOnReal.png",
+		shell:
+			"""
+			touch {output.plot}
+			"""
 
 
     
