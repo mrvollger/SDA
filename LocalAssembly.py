@@ -112,17 +112,21 @@ class LocalAssembly:
 
         # read in fasta files for ref regions
         dups = os.path.join(self.mydir, "duplications.fasta")
-        if(os.path.exists(dups)): 
+        regions = os.path.join(self.mydir, "ref.fasta.bed")
+        if(os.path.exists(dups) and os.path.exists(regions)): 
             self.refs = list(SeqIO.parse(dups, "fasta"))
+            bed = open(regions).readlines()
         else:
             self.refs = []
-        
+            bed = []
+
         # turn ref regions and seg dup identities into text
         self.dupNumber = len(self.refs)
         self.refRegions = ""
-        for ref in self.refs:
+        for (region, ref) in zip(bed, self.refs):
             key = ref.description.strip() 
-            des = key
+            pos = region.strip().split("\t")
+            des = "{}:{}-{}".format(pos[0], pos[1], pos[2])
             if(key in self.max):
                 des += "[" + ",".join(self.max[key]) + "]"
             if(key in self.mean):
@@ -198,7 +202,7 @@ class LocalAssembly:
         self.groups = []
         self.status = []
         self.asmNumber=0
-        for group in glob.glob( os.path.join(self.mydir,"group.*/") ):
+        for group in  glob.glob( os.path.join(self.mydir,"group.*/")):
             asmFile = os.path.join(group, "WH.assembly.fasta")
             groupID = group.split("/")[-2]
             groupID = int(groupID.split(".")[1])
@@ -275,6 +279,7 @@ class LocalAssembly:
                 rtn += str(key) + ":"  + str(vars(self)[key]) + "\n"
         else:
             print(self.PSVs)
+            print(len(self.groups))
             for idx, asm in enumerate(self.ASMs):
                 print(idx)
                 psvs = self.PSVs[self.groups[idx]]

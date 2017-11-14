@@ -65,7 +65,7 @@ print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 # likely to align a PSV as a mismatch rather than paired insertion and
 # deletion.
 #
-minaln="2000"
+minaln="500"
 if(os.path.exists("reads.orig.bam")):
     rule preprocess_reads:
         input:
@@ -83,12 +83,15 @@ if(os.path.exists("reads.orig.bam")):
             "reads.bam"
         threads: 8
         shell: 
-            '{blasr} {input.basreads} {input.ref} -sam \
+            """
+			{blasr}	{input.basreads} {input.ref}  \
+					-sam -preserveReadTitle -clipping subread -out /dev/stdout \
+					-nproc {threads} -bestn 1 \
                     -mismatch 3 -insertion 9 -deletion 9 \
-                    -nproc {threads} -out /dev/stdout -minAlignLength {minaln} \
-                    -preserveReadTitle | \
-                    samtools view -bS -F 4  - | \
-                    samtools sort -m 4G -T tmp -o {output}'
+                    -minAlignLength {minaln} | \
+                     samtools view -bS -F 4 - | \
+                     samtools sort -m 4G -T tmp -o {output}
+            """
 
 elif(os.path.exists("reads.orig.fasta")):
     rule realign_reads_fasta:
@@ -98,12 +101,15 @@ elif(os.path.exists("reads.orig.fasta")):
         output:
             "reads.bam"
         shell: 
-            '{blasr} {input.basreads} {input.ref} -sam  \
+            """
+			{blasr}	{input.basreads} {input.ref}  \
+					-sam -preserveReadTitle -clipping subread -out /dev/stdout \
+					-nproc {threads} -bestn 1 \
                     -mismatch 3 -insertion 9 -deletion 9 \
-                    -nproc 4 -out /dev/stdout \
-                    -minAlignLength {minaln} -preserveReadTitle | \
-                    samtools view -bS -F 4 - | \
-                    samtools sort -m 4G -T tmp -o {output}'
+                    -minAlignLength {minaln} | \
+                     samtools view -bS -F 4 - | \
+                     samtools sort -m 4G -T tmp -o {output}
+            """
 
 elif(os.path.exists("reads.fofn")):
     rule get_reads_that_map:
@@ -115,11 +121,11 @@ elif(os.path.exists("reads.fofn")):
         threads: 8
         shell: 
             """
-            {blasr} -sam -preserveReadTitle -clipping subread -out /dev/stdout \
-                    -nproc {threads} \
+			{blasr}	{input.basreads} {input.ref}  \
+					-sam -preserveReadTitle -clipping subread -out /dev/stdout \
+					-nproc {threads} -bestn 1 \
                     -mismatch 3 -insertion 9 -deletion 9 \
-                    -minAlignLength {minaln} \
-                     {input.basreads} {input.ref} | \
+                    -minAlignLength {minaln} | \
                      samtools view -bS -F 4 - | \
                      samtools sort -m 4G -T tmp -o {output}
             """
@@ -234,7 +240,6 @@ rule SNVtable_to_SNVmatrix:
     shell:
        '{scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvsPos} --mat {output.mat}'  
 
-#'''
 #
 # create duplicaitons.fasta
 # might be a bad idea, I am not sure I am recreating the correct dups
@@ -246,14 +251,12 @@ sa    ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.sa"
 rule duplicationsFasta1:
 	input:
 		dupref="ref.fasta",
-		# I want the thresholding to run before the duplicaitons part becuase it takes forever
-		thresholdPng="hetProfile/threshold.png",
 	output:
 		dupsam="ref.fasta.sam",
 	threads: 8
 	shell:
 		"""
-		blasr {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
+		blasr -clipping subread {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
 				-sam -bestn 30 -out {output.dupsam} -minMatch 15 -maxMatch 20
 		"""
 
@@ -264,7 +267,7 @@ rule duplicationsFasta2:
         duprgn="ref.fasta.rgn",
     shell:
         """
-        ~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >10000 && $9 > 0.85) print $1":"$2"-"$3 }}' > {output.duprgn}
+        ~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >9000 && $9 > 0.85) print $1":"$2"-"$3 }}' > {output.duprgn}
         """
 
 rule rgnToBed:

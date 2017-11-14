@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-#!/usr/bin/env python
 import argparse
 
 parser = argparse.ArgumentParser(description="")

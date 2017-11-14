@@ -21,6 +21,9 @@ CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
 #CANU_DIR="/net/eichler/vol21/projects/bac_assembly/nobackups/canu/Linux-amd64/bin"
 #CANU_DIR="/net/eichler/vol2/home/mvollger/projects/builds/canu/Linux-amd64/bin"
 
+configfile:
+	"coverage.json"	
+	
 groups= glob.glob("group.[0-9]*.vcf")
 IDS= []
 for group in groups:
@@ -365,98 +368,140 @@ rule quiverFromBam:
 # (in the furture I may add soemthing that does this for non quivered files)
 #
 if(os.path.exists("duplications.fasta")):
-    rule newName:
-        input:
-            "duplications.fasta"
-        output:
-            dup="duplications.fixed.fasta",
-        shell:
-            '''
-             awk 'BEGIN{{count=1}}{{if($0~/^>/){{print ">copy"count,$0;count++}}else{{print}}}}' \
-                     < duplications.fasta | sed -e 's/ >chr/\tchr/g' > {output.dup}
-            '''
+	rule newName:
+		input:
+			dup="duplications.fasta",
+		output:
+			dup="duplications.fixed.fasta",
+		run:
+			fixed = ""
+			idx = 1
+			f = open(input["dup"])
+			for line in f:
+				line = line.strip()
+				if(line[0]==">"):
+					line += "\tcopy" + str(idx)
+					idx += 1
+				fixed += line + "\n"
 
+			open(output["dup"], "w+").write(fixed)
+		'''
+		shell:
+			"""
+			awk 'BEGIN{{count=1}}{{if($0~/^>/){{print ">copy"count,$0;count++}}else{{print}}}}' \
+				 < duplications.fasta | sed -e 's/ >chr/\tchr/g' > {output.dup}
+			"""
+		'''
 
-    rule bestMappings:
-        input:
-            dup="duplications.fixed.fasta",
-            quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-            preads= 'group.{n}/H2.{prefix}.sam',
-        output:
-            best= 'group.{n}/{prefix}.best.m4',
-            average= 'group.{n}/{prefix}.average.m4',
-            best5= 'group.{n}/{prefix}.best.m5',
-            average5= 'group.{n}/{prefix}.average.m5',
-        shell:
-            """
-            if [ ! -s {input.quiver} ] 
-	        then
-                # create empty files, this will allow other rules to conitnue 
-		        > {output.best}
-                > {output.average}
-                > {output.best5}
-                > {output.average5}
-            else
-                {blasr} {input.dup} {input.quiver} -bestn 1 -header -m 4 > {output.average}
-                {blasr} {input.quiver} {input.dup} -bestn 1 -header -m 4 > {output.best}
-                {blasr} {input.dup} {input.quiver} -bestn 1 -m 5 > {output.average5}
-                {blasr} {input.quiver} {input.dup} -bestn 1 -m 5 > {output.best5}
-            fi
-            """ 
+	rule bestMappings:
+		input:
+			dup="duplications.fixed.fasta",
+			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
+			preads= 'group.{n}/H2.{prefix}.sam',
+		output:
+			best= 'group.{n}/{prefix}.best.m4',
+			average= 'group.{n}/{prefix}.average.m4',
+			best5= 'group.{n}/{prefix}.best.m5',
+			average5= 'group.{n}/{prefix}.average.m5',
+		shell:
+			"""
+			if [ ! -s {input.quiver} ] 
+			then
+			# create empty files, this will allow other rules to conitnue 
+			> {output.best}
+			> {output.average}
+			> {output.best5}
+			> {output.average5}
+			else
+			{blasr} {input.dup} {input.quiver} -bestn 1 -header -m 4 > {output.average}
+			{blasr} {input.quiver} {input.dup} -bestn 1 -header -m 4 > {output.best}
+			{blasr} {input.dup} {input.quiver} -bestn 1 -m 5 > {output.average5}
+			{blasr} {input.quiver} {input.dup} -bestn 1 -m 5 > {output.best5}
+			fi
+			""" 
 
-    rule mapBackPartition:
-        input:
-            dup="duplications.fixed.fasta",
-            quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-            #preads= 'group.{n}/{prefix}.reads.fasta',
-            preads= 'group.{n}/H2.{prefix}.sam',
-        output:
-            psam= 'group.{n}/{prefix}.{n}.sam',
-            pbam= 'group.{n}/{prefix}.{n}.bam',
-        shell:
-            """
-            if [ ! -s {input.preads} ] 
-	        then
-                # create empty files, this will allow other rules to conitnue 
-                > {output.psam}
-                > {output.pbam}
-            else
-                {blasr} {input.preads} {input.dup} -bestn 1 -sam > {output.psam}
-                samtools view -b {output.psam} \
-                        | samtools sort -m 4G -o {output.pbam}
-                #samtools view -S -b -o temp.bam {output.psam}
-                #samtools sort -m 4G -o {output.pbam} temp.bam
-                samtools index {output.pbam}
-                #rm temp.bam
-            fi
-            """
-    
-    rule truePSVs:
-        input:
-            dup="duplications.fixed.fasta",
-            ref='ref.fasta',
-            cuts='mi.gml.cuts',
-            vcf='assembly.consensus.nucfreq.vcf'
-        output:
-            truth="truth/README.txt",
-            refsam="refVSdup.sam",
-            refsnv="refVSdup.snv",
-            truthmatrix="truth.matrix"
-        shell:
-            """
-            mkdir -p truth
-            echo "exists" > {output.truth}
-             
-            blasr {input.dup} {input.ref} -sam -bestn 1 > {output.refsam} 
-            
-            /net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/PrintGaps.py \
-                    {input.ref} {output.refsam} --snv {output.refsnv} > refVSdup.SV
-           
-            ~mchaisso/projects/AssemblyByPhasing/scripts/utils/CompareRefSNVWithPSV.py \
-                    --ref {output.refsnv} --psv {input.cuts} --vcf {input.vcf} \
-                    --refFasta {input.ref} --writevcf truth/true > truth.matrix
-            
-            """
+	rule mapBackPartition:
+		input:
+			dup="duplications.fixed.fasta",
+			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
+			#preads= 'group.{n}/{prefix}.reads.fasta',
+			preads= 'group.{n}/H2.{prefix}.sam',
+		output:
+			psam= 'group.{n}/{prefix}.{n}.sam',
+			pbam= 'group.{n}/{prefix}.{n}.bam',
+		shell:
+			"""
+			if [ ! -s {input.preads} ] 
+			then
+			# create empty files, this will allow other rules to conitnue 
+			> {output.psam}
+			> {output.pbam}
+			else
+			{blasr} {input.preads} {input.dup} -bestn 1 -sam > {output.psam}
+			samtools view -b {output.psam} \
+					| samtools sort -m 4G -o {output.pbam}
+			#samtools view -S -b -o temp.bam {output.psam}
+			#samtools sort -m 4G -o {output.pbam} temp.bam
+			samtools index {output.pbam}
+			#rm temp.bam
+			fi
+			"""
+
+	rule truePSVs:
+		input:
+			dup="duplications.fixed.fasta",
+			ref='ref.fasta',
+			cuts='mi.gml.cuts',
+			vcf='assembly.consensus.nucfreq.vcf'
+		output:
+			truth="truth/README.txt",
+			refsam="refVSdup.sam",
+			refsnv="refVSdup.snv",
+			truthmatrix="truth.matrix"
+		shell:
+			"""
+			mkdir -p truth
+			echo "exists" > {output.truth}
+
+			blasr {input.dup} {input.ref} -sam -bestn 1 -clipping soft > {output.refsam} 
+
+			/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/PrintGaps.py \
+				{input.ref} {output.refsam} --snv {output.refsnv} > refVSdup.SV
+
+			~mchaisso/projects/AssemblyByPhasing/scripts/utils/CompareRefSNVWithPSV.py \
+				--ref {output.refsnv} --psv {input.cuts} --vcf {input.vcf} \
+				--refFasta {input.ref} --writevcf truth/true > truth.matrix
+
+			"""
+
+	rule truePSVsWithRefCordinates:
+		input:
+			truth="truth/README.txt",
+			refsnv="refVSdup.snv",
+		output:
+			snv = "all_true.snv",
+		run:
+			# reads snv file into a dictoriry based on positon
+			snvfile = open(input["refsnv"])
+			allsnvs = {}
+			for snvline in snvfile:
+				token = snvline.split("\t")
+				key = "{}_{}".format(token[0], token[2])
+				allsnvs[key] = snvline.strip()	
+
+			# reads all the truth files
+			truesnvs=""
+			for f in sorted(glob.glob("truth/true.*.vcf")):
+				vcf = open(f)
+				for line in vcf:
+					token = line.split("\t")
+					if(line[0]=="#" or len(token) < 2 ):
+						continue
+					key = "{}_{}".format(token[0], token[1])
+					toadd = "{}\t{}\t{}\n".format(allsnvs[key], token[2], f)
+					truesnvs += toadd
+
+			open(output["snv"], "w+").write(truesnvs)
 
 else:
     rule noMapping:
@@ -539,16 +584,29 @@ rule removeEmptyAsm:
 
 #cat group.*/Mark.assembly.consensus.fasta > {output.asmMark} || > {output.asmMark}
 rule combineAsm:
-    input:
-        remove='removeEmpty', 
-    output: 
-        asmWH='WH.assemblies.fasta',
-        #asmMark='Mark.assemblies.fasta'
-    shell:
-        """
-        rm {input.remove}
-        cat   group.*/WH.assembly.consensus.fasta > {output.asmWH}   || > {output.asmWH}
-        """
+	input:
+		remove='removeEmpty', 
+	output: 
+		asmWH='WH.assemblies.fasta',
+		#asmMark='Mark.assemblies.fasta'
+	run:
+		shell("rm " + input["remove"] )
+		#shell('cat group.*/WH.assembly.consensus.fasta > ' + output["asmWH"])# + ' || > ' + output["asmWH"])
+		rtn = ""
+		counter = 1
+		for asm in glob.glob("group.*/WH.assembly.consensus.fasta"): 
+			f = open(asm)
+			for line in f:
+				line = line.strip()
+				if(line[0] == ">" ):
+					line = line.split()
+					line[0] = "{}_{}".format(line[0], counter)
+					line = " ".join(line)
+					counter += 1
+				rtn += line + "\n"
+			f.close()
+		#print(rtn)
+		open(output["asmWH"], "w+").write(rtn)
 
 #
 rule map_asms_to_ref:
@@ -568,7 +626,7 @@ rule map_asms_to_ref:
 rule map_asms_to_duplicaitons:
     input:
         asmWH="WH.assemblies.fasta",
-        ref="duplications.fasta"
+        ref="duplications.fixed.fasta"
     output:
         WHm5="WH_dup.m5",
         sam="WH_dup.sam",
@@ -581,12 +639,13 @@ rule map_asms_to_duplicaitons:
 rule plot_seqs_on_dup:
     input:
         depth="dup_depth.tsv",
-        WHm5="WH_dup.m5"
+        WHm5="WH_dup.m5",
+        sam="WH_dup.sam"
     output:
         "seqsOnDup.png",
     shell:
         """
-        {utils}/plotDepth.py {input.depth} {output} --m5 {input.WHm5}
+        {utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
         """
 
 rule plot_seqs_on_cov:
@@ -636,17 +695,20 @@ rule plotCovOnAsm:
 
 #
 #
-#
+		#
 rule bedForTrack:
-    input:
-        bed="ref.fasta.bed",
-        whdup="WH_dup.m5",
-    output:
-        asmbed="asm.bed",
-    shell:
-        """
-        bedForABP.py
-        """
+	input:
+		bed="ref.fasta.bed",
+		summary="summary.txt",
+		whdup="WH_dup.m5",
+	output:
+		asmbed="asm.bed",
+	params:
+		project=config["project"],
+	shell:
+		"""
+		bedForABP.py {params.project}
+		"""
 
 
 
@@ -676,8 +738,14 @@ rule miropeats:
 	shell:
 		"""
 		miropeats -s 500 -onlyinter {input.refWH} > contig_compare
-		mv threshold500 refWH.miro.ps
-		ps2pdf refWH.miro.ps
+		if [ -f threshold500 ]
+		then
+			mv threshold500 refWH.miro.ps
+			ps2pdf refWH.miro.ps
+		else
+			touch {output.miro}
+		fi
+		
 		"""
 # pdf='mi.cuts.gml.pdf',
 rule final:
@@ -691,6 +759,7 @@ rule final:
 		dupPND="seqsOnDup.png",
 		asmbed="asm.bed",
 		plotReal="SeqsOnReal.png",
+		snv = "all_true.snv",
 	output: 'PSV2_done'
 	shell:
 		"""
