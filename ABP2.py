@@ -1,6 +1,8 @@
 import os
 import glob
 import re
+from Bio import SeqIO
+import re
 
 SNAKEMAKE_DIR= os.path.dirname(workflow.snakefile)
 
@@ -52,7 +54,8 @@ rule makeGroupDirs:
         tag='group.{n}/group.{n}'
     shell:
         """
-        rm -rf {output.group} # the assemblies will not re run properlly unless it starts fresh 
+        rm -rf summary.py WH.assemblies.fasta
+		rm -rf {output.group} # the assemblies will not re run properlly unless it starts fresh 
         mkdir -p {output.group} 
         echo "{output.tag}" >  {output.tag} 
         """
@@ -191,18 +194,27 @@ rule readsFromSam:
     output:
         pfasta= 'group.{n}/{prefix}.reads.fasta'
     shell:
-        '''
-        grep -v "^@" {input.H2} > group.{wildcards.n}/{wildcards.prefix}.temp.txt
-        if [ -s group.{wildcards.n}/{wildcards.prefix}.temp.txt ]
-        then
-            cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
-                ~mchaisso/projects/PacBioSequencing/scripts/falcon/FormatFasta.py --fakename  > {output.pfasta}
+        """
+        grep -v "^@" {input.H2} > group.{wildcards.n}/{wildcards.prefix}.temp.txt \
+			|| touch group.{wildcards.n}/{wildcards.prefix}.temp.txt
+
+		if [ -s group.{wildcards.n}/{wildcards.prefix}.temp.txt ]; then
+            >&2 echo " no real assembly"
+           cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
+               ~mchaisso/projects/PacBioSequencing/scripts/falcon/FormatFasta.py --fakename  > \
+				{output.pfasta};
         else
-            >&2 echo " no real fasta file for assembly"
-            touch {output.pfasta}
+            touch {output.pfasta};
         fi
+
+		#cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
+        #    ~mchaisso/projects/PacBioSequencing/scripts/falcon/FormatFasta.py --fakename  > \
+		#	{output.pfasta} || \
+		#	touch {output.pfasta}
+
+
         rm -f group.{wildcards.n}/{wildcards.prefix}.temp.txt 
-        '''
+        """
 
 # run the assembly
 rule runAssembly:
@@ -210,7 +222,7 @@ rule runAssembly:
     output: 'group.{n}/{prefix}.assembly/asm.contigs.fasta'
     threads: 16
     shell:
-        '''
+        """
         if [ -s {input} ]; then
             module load java/8u25 && {CANU_DIR}/canu -pacbio-raw {input} genomeSize=60000 \
                 -d group.{wildcards.n}/{wildcards.prefix}.assembly \
@@ -226,7 +238,7 @@ rule runAssembly:
             mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly
             > {output}
         fi
-        '''
+        """
 
 # this is currently not being run, uncooment the input line from assemblyReport, to start running it, and add additional code 
 # to handle it
@@ -500,7 +512,7 @@ if(os.path.exists("duplications.fasta")):
 					key = "{}_{}".format(token[0], token[1])
 					toadd = "{}\t{}\t{}\n".format(allsnvs[key], token[2], f)
 					truesnvs += toadd
-
+				vcf.close()
 			open(output["snv"], "w+").write(truesnvs)
 
 else:
@@ -590,56 +602,89 @@ rule combineAsm:
 		asmWH='WH.assemblies.fasta',
 		#asmMark='Mark.assemblies.fasta'
 	run:
+		collapse = os.path.basename(os.getcwd())
 		shell("rm " + input["remove"] )
 		#shell('cat group.*/WH.assembly.consensus.fasta > ' + output["asmWH"])# + ' || > ' + output["asmWH"])
 		rtn = ""
 		counter = 1
-		for asm in glob.glob("group.*/WH.assembly.consensus.fasta"): 
-			f = open(asm)
-			for line in f:
-				line = line.strip()
-				if(line[0] == ">" ):
-					line = line.split()
-					line[0] = "{}_{}".format(line[0], counter)
-					line = " ".join(line)
-					counter += 1
-				rtn += line + "\n"
-			f.close()
+		toAdd = []
+		for asm in sorted( glob.glob("group.*/WH.assembly.consensus.fasta")): 
+			match = re.match( "(group.\d+)/WH.assembly.*", asm)
+			group = match.group(1)
+			print(group)
+			recs = list(SeqIO.parse(asm, "fasta"))
+			for rec in recs:
+				rec.id = "{}_collapse.{}_id.{}".format(group, collapse, counter)
+				rec.name = rec.id
+				rec.seq = rec.seq.strip("N")
+				counter += 1
+				toAdd.append(rec)
 		#print(rtn)
-		open(output["asmWH"], "w+").write(rtn)
+		SeqIO.write(toAdd ,output["asmWH"], "fasta" ) 
+
+
+
+#
+# cross match command
+#
+CM = """export PATH=$PATH:/net/eichler/vol2/local/inhousebin
+cross_match -tags -alignments -masklevel 0 -minmatch 50 -bandwidth 250 """
+
+"""-gap_ext -1 -gap_init -10 -penalty -1""" 
+"""#blasr -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}"""
 
 #
 rule map_asms_to_ref:
-    input:
-        asmWH="WH.assemblies.fasta",
-        ref="ref.fasta"
-    output:
-        WHm5="WH.m5",
-        sam="WH.sam",
-    shell:
-        """
-        blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
-        blasr -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
-        """
-
+	input:
+		asmWH="WH.assemblies.fasta",
+		ref="ref.fasta"
+	output:
+		cm="WH.cm",
+	shell:
+		"""
+		{CM} {input.asmWH} {input.ref}  > {output.cm}
+		"""
 
 rule map_asms_to_duplicaitons:
-    input:
-        asmWH="WH.assemblies.fasta",
-        ref="duplications.fixed.fasta"
-    output:
-        WHm5="WH_dup.m5",
-        sam="WH_dup.sam",
-    shell:
-        """
-        blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
-        blasr -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
-        """
+	input:
+		asmWH="WH.assemblies.fasta",
+		ref="duplications.fixed.fasta"
+	output:
+		cm="WH_dup.cm",
+		blasr="WH_dup.blasr.sam",
+	shell:
+		"""
+		blasr -bestn 1 -sam -clipping soft {input.asmWH} {input.ref} -out {output.blasr}
+		{CM} {input.asmWH} {input.ref}  > {output.cm}
+		"""
+#
+rule map_asms_to_ref_convert:
+	input:
+		cm="WH.cm",
+	output:
+		sam="WH.sam",
+		tsv="WH.tsv",
+	shell:
+		"""
+		~mvollger/projects/cmpSeq/cmToSam.py {input.cm} {output.sam}
+		~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
+		"""
+
+rule map_asms_to_duplicaitons_convert:
+	input:
+		cm="WH_dup.cm",
+	output:
+		sam="WH_dup.sam",
+		tsv="WH_dup.tsv",
+	shell:
+		"""
+		~mvollger/projects/cmpSeq/cmToSam.py {input.cm} {output.sam}
+		~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
+		"""
 
 rule plot_seqs_on_dup:
     input:
         depth="dup_depth.tsv",
-        WHm5="WH_dup.m5",
         sam="WH_dup.sam"
     output:
         "seqsOnDup.png",
@@ -651,7 +696,6 @@ rule plot_seqs_on_dup:
 rule plot_seqs_on_cov:
     input:
         depth="depth.tsv",
-        WHm5="WH.m5",
         sam="WH.sam",
     output:
         "seqs.png",
@@ -676,9 +720,9 @@ rule coverageOnAsms:
 		"""
 		cat {input.ref} {input.asm} > refAndWH.fasta
 		{blasr} {input.reads} refAndWH.fasta -clipping soft -nproc {threads} -bestn 1 -sam -out /dev/stdout | \
-                samtools view -bS - | \
+				samtools view -bS - | \
 				samtools sort -m 4G -o {output.bam} - 
-                samtools index {output.bam}
+				samtools index {output.bam}
 		samtools depth -aa {output.bam} > {output.cov}
 		"""
 
@@ -692,40 +736,38 @@ rule plotCovOnAsm:
 		{utils}/plotDepth.py {input.cov} {output.plot}
 		"""
 
-
 #
+# runs a summary script that just consilidates some data, which is later sued in plotting
 #
-		#
-rule bedForTrack:
+rule summary:
 	input:
 		bed="ref.fasta.bed",
+		combine='WH.assemblies.fasta',
+		truth="truth/README.txt",
+		tsv="WH_dup.tsv",
+	output:
 		summary="summary.txt",
-		whdup="WH_dup.m5",
+		table="abp.table.tsv",
+	shell:
+		"""
+		{base2}/summary.py
+		"""
+#
+#
+#
+rule bedForTrack:
+	input:
+		bedx="ref.fasta.bed",
+		table="abp.table.tsv",
+		summary="summary.txt",
 	output:
 		asmbed="asm.bed",
 	params:
 		project=config["project"],
 	shell:
 		"""
-		bedForABP.py {params.project}
+		bedForABP.py {input.table} {params.project}
 		"""
-
-
-
-#
-# runs a summary script that just consilidates some data, which is later sued in plotting
-#
-rule summary:
-    input:
-        combine='WH.assemblies.fasta',
-        truth="truth/README.txt",
-    output:
-        summary="summary.txt",
-    shell:
-        """
-        {base2}/summary.py
-        """
-
 
 #
 #
@@ -765,8 +807,9 @@ rule final:
 		"""
 		touch {output}
 		"""
-#-----------------------------------------------------------------------------------------------------#
 
+
+#-----------------------------------------------------------------------------------------------------#
 if(os.path.exists("real.fasta")):
 	# create a map of the reads onto the real end results 
 	rule coverageOnReal:

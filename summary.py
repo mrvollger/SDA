@@ -1,66 +1,27 @@
 #!/usr/bin/env python
 #import ABPUtils as abp
-import networkx as nx
-import numpy as np
-import LocalAssembly
+#import networkx as nx
+#import numpy as np
+from LocalAssembly3 import LocalAssembly
 import pandas as pd
 import os
-
-cwd = os.getcwd()
-print(cwd)
-
-
-# old commands ot make a psvgraph, I do not use this anymore 
-'''
-myfile = "mi.cuts.gml"
-out = "out.png"
-g = abp.ReadGraph(myfile)
-
-# get the labels
-color = nx.get_node_attributes(g, "color")
-degree = g.degree()
-labels={}
-for key in color:
-    labels[key] = str(color[key]) + ":" + str(degree[key])
-
-
-# set the node positions of a few values
-alreadySeen = set()
-fixed = []
-for key in color:
-    c = color[key]
-    if(c not in alreadySeen):
-        fixed.append(key)
-        alreadySeen.add(c)
-
-x = int(np.sqrt(len(fixed))) + 1
-ind=list(np.ndindex(x,x))
-clusterPos={} # color and then pos
-for idx, c in enumerate(alreadySeen):
-    clusterPos[c] = ind[idx]
-
-print(clusterPos)
-
-for n in g.node.keys():
-    c = g.node[n]["color"]
-    g.node[n]["pos"]=clusterPos[c]
-
-pos = nx.get_node_attributes(g, "pos")
-'''
+import glob
 
 
 # generate a summary of the assmebly 
-# get text to add to the bottom of the graph. 
-LA = LocalAssembly.LocalAssembly(cwd)
-df = LA.asPD()
+
+cwd = os.getcwd()
+LA = LocalAssembly(cwd)
+df = LA.all
+#data = glob.glob("abp.table.tsv")[0]
+#df = pd.read_csv(data, sep = "\t")
 row = df.iloc[0]
 #print(row)
-region = row[ "region_in_falcon" ]
-copies = row[ "copies_in_reference" ]
-numAsm = row["number_of_psv_assemblies"]
-numCC =  row["number_of_CC_groups"]
+region = row[ "collapse" ]
+copies = row[ "copiesInRef" ]
+numAsm = row["numR"] + row["numPR"]
+numCC =  row["numOfCCgroups"]
 refRegions = row["refRegions"]
-print(refRegions)
 mysplit = refRegions.split(";")
 refRegions = ""
 for idx, reg in enumerate(mysplit):
@@ -68,22 +29,34 @@ for idx, reg in enumerate(mysplit):
     if( (idx + 1) % 3 == 0 ):
         refRegions += "\n"
 
-notHeader =[ "number_of_psv_assemblies", "region_in_falcon", "copies_in_reference", "number_of_CC_groups",
-        "refRegions", "length", "psvURL"]
-notused=["CC_ID", "Status","numOfPSVs","length", 
-                "num_of_sam_reads",
-                "averagePerID", "averageLength", 
-                "bestPerID", "bestLength", "BestRegionInTheHumanReference", "TruthMatrix"]
+notHeader =[ "numR","numF", "numPR", "numMA", "collapse", "copiesInRef", "numOfCCgroups",
+        "refRegions", "collapseLen", "totalReads", "totalPSVs", "numOfAssemblies", "totalPSVs",
+		"bestStart", "bestEnd", "bestChr", "aveRefLength"]
+
+header = ["CC_ID", "Status", "perID_by_matches", "bestMatch", "Length", "numPSVs", "query_name"]
+
+
+# add in the psv matrix
+nums = ( range(1000))
+for col in list(df):
+	if(col in nums):
+		header.append(col)
+
+print(header)
+
 #df = df[headerList]
-df.drop(notHeader, axis=1, inplace=True)
+#df.drop(notHeader, axis=1, inplace=True)
 #df = df[df["Status"] != "Failed"]
-df = df.sort_values(["Status", "CC_ID"])
+df = df[header]
+df = df.sort_values(["CC_ID", "query_name"])
 pd.set_option('display.width', 200)
-df=df.rename(columns = {'BestRegionInTheHumanReference':'BestInRef'})
-df=df.rename(columns = {"num_of_sam_reads":'reads'})
-df=df.rename(columns = {"averageLength":'aveLen'})
-df=df.rename(columns = {"averagePerID":'avePerID'})
-df=df.rename(columns = {"bestLength":'bestLen'})
+
+
+#df=df.rename(columns = {'BestRegionInTheHumanReference':'BestInRef'})
+#df=df.rename(columns = {"num_of_sam_reads":'reads'})
+#df=df.rename(columns = {"averageLength":'aveLen'})
+#df=df.rename(columns = {"averagePerID":'avePerID'})
+#df=df.rename(columns = {"bestLength":'bestLen'})
 
 text = '''region: {}
 copies: {}
@@ -95,7 +68,7 @@ Group Stats:
 {}
 '''.format(region, copies, numAsm, numCC, refRegions, df.to_string(index=False))
 
-print(text)
+#print(text)
 outfile = open("summary.txt", "w+")
 outfile.write(text)
 outfile.close()

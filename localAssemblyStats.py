@@ -7,13 +7,15 @@ if sys.version_info[0] < 3:
     from StringIO import StringIO
 else:
     from io import StringIO
-from LocalAssembly import LocalAssembly
+#from LocalAssembly import LocalAssembly
+from LocalAssembly2 import LocalAssembly
 import pandas as pd
 
 parser = argparse.ArgumentParser()
 parser.add_argument("localAssemblyDirectories", help="list of all of the directoreis with local assemblies" )
 parser.add_argument("--psvGraphURL", help="url where the psv graph can be found", default="https://eichlerlab.gs.washington.edu/help/mvollger/psvGraphs/" )
 parser.add_argument("--psvGraphLoc", help="place where all the psv graphs will be linked to", default="/net/eichler/vol2/home/mvollger/public_html/psvGraphs/" )
+parser.add_argument("--start", help="dir index to start on", type = int ,default=0 )
 parser.add_argument("--out", help="where to place the table of generated results", default="/net/eichler/vol2/home/mvollger/public_html/localAssemblyStats.tsv" )
 args = parser.parse_args()
 localAssemblyDirectories = args.localAssemblyDirectories
@@ -25,17 +27,27 @@ def main():
     header = ""
     LAS = open(localAssemblyDirectories)
     dfs = [] 
+    cwd = os.getcwd() + "/"
     for idx, directory in enumerate(LAS):
-        LA = LocalAssembly(directory, psvGraphLoc, psvURL).asPD()
-        dfs.append(LA)
-        print(type(LA), idx)
-        #if(idx == 20):
+        if(idx < args.start):
+            continue 
+        directory=cwd + directory.strip()
+        print(idx)
+        try:
+            #LA = LocalAssembly(directory, psvGraphLoc, psvURL).asPD()
+            LA = LocalAssembly(directory)
+            dfs.append(LA)
+        except: 
+            print(directory)
+            print("failed on this LA")
+            raise
+		#if(idx == 20):
         #    break
         #out += str(temp)
         #if(idx == 0 ):
         #    header = temp.getHeader()
         #if(idx == 5): break
-    
+    exit()    
     #    
     # create df
     #

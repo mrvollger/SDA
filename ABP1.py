@@ -12,12 +12,13 @@ shell.prefix("source %s/env_PSV.cfg; " % SNAKEMAKE_DIR)
 """
 Dependencies: should be taken care of by loading the env_PSV.cfg file
 Requires a file called reads.orig.bam, ref.fasta should also be there, and it will take advantage 
-of duplications.fasta, if it is there
+of duplications.fasta, if it is there, also a config file called coverage.json
 """
 
 blasr = '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
 blasrDir = '~mchaisso/projects/blasr-repo/blasr'
 scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
+#scriptsDir = '~mvollger/projects/abp_repo/abp/abp'
 #base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
 utils="/net/eichler/vol2/home/mvollger/projects/utility"
@@ -242,12 +243,12 @@ rule SNVtable_to_SNVmatrix:
 
 #
 # create duplicaitons.fasta
-# might be a bad idea, I am not sure I am recreating the correct dups
-# I swithced from using no alts to using alts, and this should be correct now
 #
-GRCh38="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta"
-fai   ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.fai"
-sa    ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.sa"
+#GRCh38="/net/eichler/vol21/projects/bac_assembly/nobackups/genomeWide/Mitchell_CHM1/hg38/ucsc.hg38.no_alts.fasta"
+GRCh38="/net/eichler/vol2/home/mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta"
+fai = GRCh38 + ".fai"
+sa = GRCh38 + ".sa"
+
 rule duplicationsFasta1:
 	input:
 		dupref="ref.fasta",
@@ -446,11 +447,16 @@ rule correlationClustering:
 		graph="mi.gml",
 	output:
 		out="mi.cuts.gml",
-		plt="mi.gml.png",
+		#plt="mi.gml.png", # now jsut only uses my plot
 		sites="mi.gml.sites",
-                cuts="mi.gml.cuts"
+		cuts="mi.gml.cuts"
 	shell:
-		'{scriptsDir}/MinDisagreeCluster.py --graph {input.graph} --cuts {output.cuts} --sites {output.sites} --factor 2 --swap 1000 --plot {output.plt} --out {output.out}'
+		"""	
+		{scriptsDir}/MinDisagreeClusterByComponent.py  --niter 1000 --swap 10000 --factor 2\
+				--graph {input.graph} --cuts {output.cuts} --sites {output.sites} --out {output.out}
+
+		for x in $(cat mi.gml.sites); do echo $x; done | sort | uniq -d > notUnique.sites
+		"""
 
 
 
@@ -477,7 +483,7 @@ rule makeCutsInPSVgraph:
     output:
         vcfs=dynamic("group.{n}.vcf"), 
     shell:
-        '{scriptsDir}/CutsToPhasedVCF.py {input.cuts} {input.snvsPos} {input.vcf} --minComponent 4 --summary mi.comps.txt --ref {input.refIdx} '
+        'rm -rf group.*; {scriptsDir}/CutsToPhasedVCF.py {input.cuts} {input.snvsPos} {input.vcf} --minComponent 4 --summary mi.comps.txt --ref {input.refIdx}'
 
 
 #

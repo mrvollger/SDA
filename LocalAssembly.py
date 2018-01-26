@@ -39,6 +39,7 @@ class LocalAssembly:
     def __init__(self, mydir, psvGraphLoc=None, psvURLPATH=None):
         self.mydir = os.path.abspath(mydir.strip())
         self.psvGraphLoc = psvGraphLoc
+        self.numGroups = self.groups()
         self.psvURLPATH = psvURLPATH 
         self.basename()
         self.mi_gml_png()
@@ -68,13 +69,24 @@ class LocalAssembly:
         runCmd(cmd)
     
 
+    def groups(self):
+        self.groups = []
+        num = 0
+        pattern = glob.glob( os.path.join(self.mydir,"group.(*).vcf") )
+        for vcf in glob.glob( os.path.join(self.mydir,"group.*.vcf") ):
+            num+=1
+        return(num)
+				
+
     def samReads(self):
         self.num_sam_reads = []
         for samFile in glob.glob( os.path.join(self.mydir,"group.*/H2.WH.sam") ):
             if(os.path.exists(samFile)):
                 cmd = 'grep -c "^[^@]" ' + samFile
                 self.num_sam_reads.append( int(runCmd(cmd)) )
-
+            else:
+                self.num_sam_reads.append( 0 )
+				
     def numOfPSVs(self):
         self.PSVs = []
         mi_gml_cuts = os.path.join(self.mydir, "mi.gml.cuts")
@@ -169,9 +181,12 @@ class LocalAssembly:
                     
                     group = best[0].iloc[0]
                     region = best[5].iloc[0]
-                    start = best[7].iloc[0]
-                    end = best[8].iloc[0]
+                    chrom = region.split(":")[0]
+                    refStart = int(region.split(":")[1].split("-")[0])
+                    start = best[7].iloc[0] + refStart
+                    end = best[8].iloc[0] + refStart
                     length = abs(end - start)
+                    region = "{}:{}-{}".format(chrom, start, end)
                     self.bestMatch.append(region)
                     self.bestLength.append(length)
             
@@ -272,6 +287,11 @@ class LocalAssembly:
         return(header)
 
     def __str__(self):
+        if(len(self.PSVs) != len(self.groups)):
+            print(len(self.PSVs))
+            print(len(self.groups))
+            print("failed pipeline, cannot generate output")
+            return("")
         rtn = ""
         debug = False
         if(debug):
@@ -298,6 +318,8 @@ class LocalAssembly:
     def asPD(self):
         text = self.getHeader()
         text += str(self)
+        if(len(text) == 0):
+            return(None)
         text = StringIO(text)         
         df = pd.read_csv(text, sep = "\t", header = 0)
         return(df)

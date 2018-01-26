@@ -3,6 +3,7 @@ import java.io.File;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import org.gephi.io.exporter.preview.PNGExporter;
+import org.gephi.io.exporter.preview.PDFExporter;
 import org.gephi.appearance.plugin.PartitionElementColorTransformer;
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
@@ -49,9 +50,11 @@ import org.gephi.preview.api.PreviewController;
 import org.gephi.preview.api.PreviewModel;
 import org.gephi.preview.api.PreviewProperty;
 import org.gephi.layout.plugin.fruchterman.FruchtermanReingold;
+import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2;
 import org.gephi.layout.plugin.force.yifanHu.YifanHuLayout;
 import org.gephi.layout.plugin.force.*;
 import org.openide.util.Lookup;
+import org.gephi.io.exporter.plugin.ExporterGML;
 
 
 
@@ -120,28 +123,58 @@ public class Headless
         layout.setOptimalDistance(200f);
         layout.initAlgo();
         */
-
-        FruchtermanReingold layout = new FruchtermanReingold(null);
-        layout.setGraphModel(graphModel);
+		
+		// run FR at low gravity to get well sperated clusters
+        ForceAtlas2 layout = new ForceAtlas2(null);
+		layout.setGraphModel(graphModel);
         layout.resetPropertiesValues();
         layout.initAlgo();
-        
-        System.out.println("Running Layout Algorithum");
-        for (int i = 0; i < 25*100 && layout.canAlgo(); i++) {
+        System.out.println("Running Layout Algorithum: Force Atlas2");
+        for (int i = 0; i < 100*100 && layout.canAlgo(); i++) {
             layout.goAlgo();
         }
         layout.endAlgo();
+		// run FR at high gravity to then bring the clusters into a smaller space 
+        FruchtermanReingold layout2 = new FruchtermanReingold(null);
+        layout2.setGravity(10.01); 
+		layout2.setGraphModel(graphModel);
+        layout2.resetPropertiesValues();
+        layout2.initAlgo();
+        System.out.println("Running Layout Algorithum: FruchtermanReingold");
+        for (int i = 0; i < 100*100 && layout2.canAlgo(); i++) {
+            layout2.goAlgo();
+        }
+        layout2.endAlgo();
+
+
+
+
+
         System.out.println("Done Running Layout Algorithum");
 
 
         // add CCID column
         Column ccCol = graphModel.getNodeTable().addColumn("CCID", Integer.class);
         for (Node n : graph.getNodes()) {
-            Double d_color = (Double) n.getAttribute("color");
+            Long d_color = (Long) n.getAttribute("color");
             int i_color = d_color.intValue();
             n.setAttribute(ccCol, i_color);
         }
 
+				int maxPos = 0;
+				int minPos = 99999999;
+				for (Node n : graph.getNodes()) {
+						int pos =  Integer.parseInt((String)n.getAttribute("pos"));
+
+						if (pos > maxPos) {
+								maxPos = pos;
+						}
+						if (pos < minPos) {
+								minPos = pos;
+						}
+				}
+				
+				
         //List node columns
         for (Column col : graphModel.getNodeTable()) {
             System.out.println(col);
@@ -155,15 +188,29 @@ public class Headless
             Partition partition = ((PartitionFunction) func).getPartition();
             Palette palette = PaletteManager.getInstance().generatePalette(partition.size());
             partition.setColors(palette.getColors());
-            ac.transform(func); 
+            ac.transform(func);
+						for (Node n : graph.getNodes()) {
+								int pos =  Integer.parseInt((String)n.getAttribute("pos"));
+								float relPos = 0.25f+ 0.75f*((float) (pos - minPos) )/(maxPos-minPos);
+								//						n.setAttribute(posCol, relPos);
+								
+								n.setAlpha(relPos);
+						}
         }else{
             System.out.println("Cannot get partition");
             for(Node n : graph.getNodes()){
-                n.setColor( Color.BLUE.brighter() );
+								int pos =  Integer.parseInt((String)n.getAttribute("pos"));
+								float relPos = 0.25f+ 0.75f*((float) (pos - minPos) )/(maxPos-minPos);
+								//						n.setAttribute(posCol, relPos);
+
+                n.setColor( Color.BLUE );
+								//System.out.println(relPos);
+								n.setAlpha(relPos);
             }
         }
 
-        
+				//        Column posCol = graphModel.getNodeTable().addColumn("POS", Double.class);
+								
         
         //Size by Degree
         Function degreeRanking = am.getNodeFunction(graph, AppearanceModel.GraphFunction.NODE_DEGREE, RankingNodeSizeTransformer.class);
@@ -213,24 +260,47 @@ public class Headless
         // for some reaosn the next line make it so it takes longer of the pdf to laod in default ubunut 
         // but it does not really change the files ize
         model.getProperties().putValue(PreviewProperty.EDGE_OPACITY, new Float(50) );
+        model.getProperties().putValue(PreviewProperty.NODE_PER_NODE_OPACITY, true );				
         
         
         //Export
+	
         ExportController ec = Lookup.getDefault().lookup(ExportController.class);
-        try {
+				try {
             ec.exportFile(new File("mi.cuts.gml.pdf"));
             System.out.println("Export Happened");
+						
         } catch (IOException ex) {
             ex.printStackTrace();
             return;
-        }
-         //Export full graph, save it to test.png and show it in an image frame
+				}
+				/*				
+        PDFExporter pdfExporter = (PDFExporter) ec.getExporter("pdf");
+				try {
+						java.io.FileOutputStream pdfos = new java.io.FileOutputStream("mi.cuts.gml.pdf");
+						pdfExporter.setOutputStream(pdfos);
+						pdfExporter.execute();				
+				}
+				catch (java.io.FileNotFoundException e) {
+				}
+				//Export full graph, save it to test.png and show it in an image frame
         //ec.exportFile(new File("mi.cuts.gml.png"));
-        //PNGExporter exporter = (PNGExporter) ec.getExporter("png");
-        //ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        //ec.exportStream(baos, exporter);
-        //byte[] png = baos.toByteArray();
+        PNGExporter exporter = (PNGExporter) ec.getExporter("png");
+				try {
+						java.io.FileOutputStream fos = new java.io.FileOutputStream("mi.cuts.gml.png");
+						exporter.setOutputStream(fos);
+						exporter.execute();
+				}
+				catch (java.io.FileNotFoundException e) {
+				}
+				*/
+				//        ec.exportStream(baos, exporter);
+				//        byte[] png = baos.toByteArray();
 
+				//        pdfExporter.setPageSize(PageSize.A0);
+				//        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+				//        ec.exportStream(baos, pdfExporter);
+				
         //Export
         /*
         ExportController ec2 = Lookup.getDefault().lookup(ExportController.class);
@@ -249,7 +319,18 @@ public class Headless
         ec.exportStream(baos, pdfExporter);
         byte[] pdf = baos.toByteArray();
         */
-    }
+    
+	ExportController ec2 = Lookup.getDefault().lookup(ExportController.class);
+	ExporterGML gml = (ExporterGML) ec2.getExporter(".gml");
+
+	try {
+		ec2.exportFile(new File("cc.positions.gml"), gml);
+	} catch (IOException ex) {
+		ex.printStackTrace();
+	}
+
+
+	}
 
 }
 

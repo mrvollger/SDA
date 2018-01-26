@@ -58,18 +58,17 @@ localrules: all,
 
 rule all:
 	input:
-		combined="coverage/all.merged.bed",
-		stats="coverage/all.stats.txt",
-		minmax="MinMax.sh",
-		collapses="collapses.bed",
-		readme = "reference/README.txt",
-		laregions="LocalAssemblies/regions.txt",
-		ref = "reference/ref.masked.fasta",
-		allsam="LocalAssemblies/all.ref.fasta.sam",
-		duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
-		cov=dynamic("LocalAssemblies/{region}/coverage.json"),
-		dup=dynamic("LocalAssemblies/{region}/duplications.fasta"),
-		#ABPsetup=dynamic("LocalAssemblies/{region2}/duplications.fasta")
+		#combined="coverage/all.merged.bed",
+		#stats="coverage/all.stats.txt",
+		#minmax="MinMax.sh",
+		#collapses="collapses.bed",
+		#readme = "reference/README.txt",
+		#laregions="LocalAssemblies/regions.txt",
+		#ref = "reference/ref.masked.fasta",
+		#allsam="LocalAssemblies/all.ref.fasta.sam",
+		#duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
+		#cov=dynamic("LocalAssemblies/{region}/coverage.json"),
+		refDone="LocalAssemblies/README.txt",
 
 DIRS = "benchmarks reference fofns coverage LocalAssemblies alignments" 
 #
@@ -538,9 +537,9 @@ rule GenerateMinAndMax:
 	run:
 		stats = pd.read_csv(input["stats"], header = 0, sep = "\t")
 		# the plust one is to make it round up
-		maxcov = int(stats.iloc[0]["mean_coverage"] + 1)
+		maxcov = int(stats.iloc[0]["mean_coverage"] )
 		mintotal=int(2.0*stats.iloc[0]["mean_coverage"] - 0.1*stats.iloc[0]["std_coverage"]+1)
-		mincov = int(stats.iloc[0]["mean_coverage"] * 0.5 - 0.1*stats.iloc[0]["std_coverage"] )
+		mincov = int(stats.iloc[0]["mean_coverage"] * 0.5 - 0.1*stats.iloc[0]["std_coverage"]+1)
 		out = "export MINCOV={}\nexport MAXCOV={}\nexport MINTOTAL={}\n".format(mincov, maxcov, mintotal)
 		open(output["minmax"], "w+").write(out)
 		out2 = '{{\n\t"MINCOV" : {},\n\t"MAXCOV" : {},\n\t"MINTOTAL" : {}\n}}\n'.format(mincov, maxcov, mintotal)
@@ -587,7 +586,7 @@ rule BedForCollapses:
 	params:
 		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
 	run:
-		cov = json.load(open(input["json"]))
+		#cov = json.load(open(input["json"]))
 		bed = pd.read_csv(input["combined"], sep = "\t", header=None, 
 				names=['contig', 'start', 'end', 'coverage', "repeatCount"])
 
@@ -744,7 +743,7 @@ rule LocalAssembliesRegions:
 			dirsForShell += region + " "
 		rfile.close()
 		# remove any old directories
-		shell('rm -rf LocalAssemblies/*.*.*')
+		# shell('rm -rf LocalAssemblies/*.*.*')
 		# add new direcotires 
 		shell("mkdir -p " + dirsForShell)
 
@@ -804,8 +803,6 @@ rule LocalAssembliesRgn:
 rule LocalAssembliesRef:
 	input:
 		rgn="LocalAssemblies/{region}/orig.rgn",
-		#asm=reference,
-		# I dont want to get from the masked reference but the unmaksed one
 		asm=config["asm"]
 	output:
 		refs="LocalAssemblies/{region}/ref.fasta",
@@ -878,22 +875,31 @@ rule LocalAssembliesConfig:
 	params:
 		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
 		project=config["project"],
-	shell:
-		"""
+	run:
+		f = open(input["MinMax"])
+		out = ""
+		for idx, line in enumerate(f.readlines()):
+			if(idx == 1):
+				out += '\t"project":"{}",\n'.format(params["project"]) 
+			out += line
+		open(output["cov"], "w+").write(out)
+		'''
 		cp {input.MinMax} {output.cov}
 		sed -i '1 s/$/\n\t"project":"{params.project}",/' {output.cov}
-		"""
+		'''
+
 #
 # create the sequences in the reference that best match what I am generating 
 #
-GRCh38="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta"
-fai   ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.fai"
-sa    ="/net/eichler/vol2/eee_shared/assemblies/GRCh38/GRCh38.fasta.sa"
+GRCh38 = config["reference"]
+fai = GRCh38 + ".fai"  
+sa = GRCh38 + ".sa"  
 #
 # combine all of the ref.fastas so I can blasr them with one command, (much faster)
 #
 rule combineRefFasta:
 	input:
+		cov=dynamic("LocalAssemblies/{region}/coverage.json"),
 		dupref=dynamic("LocalAssemblies/{region}/ref.fasta"),
 	output:
 		allref="LocalAssemblies/all.ref.fasta",
@@ -918,15 +924,19 @@ rule duplicationsFasta1:
 		dupsam="LocalAssemblies/all.ref.fasta.sam",
 	params:
 		blasr=config["blasr"],
-		sge_opts=" -pe serial 8 -l mfree=8G -l h_rt=3:00:00",
+		sge_opts=" -pe serial 4 -l mfree=16G -l h_rt=12:00:00",
 	shell:
 		"""
 		# for some reason if i use the version of blasr in params.blasr it fails.
+		# this is a bug I should probably share with mark
+		# it looks like lots of alignments have 0 matching bases
 		# so I will use the regualrly loaded blasr
-		#{params.blasr}/alignment/bin/blasr  
-		
-		blasr -clipping subread {input.dupref} {GRCh38} -nproc 8 -sa {sa} \
-				-sam -bestn 30 -out {output.dupsam} -minMatch 15 -maxMatch 20
+		# {params.blasr}/alignment/bin/blasr  
+		echo "here"	
+		blasr -clipping subread {input.dupref} {GRCh38} -nproc 4 -sa {sa} \
+				-sam -bestn 30 -minMatch 15 -maxMatch 20 \
+				-out {output.dupsam}
+		echo "here2"
 		"""
 		
 #
@@ -941,7 +951,7 @@ rule getHighIdentity:
 		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
 	shell:
 		"""
-		#~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >8999 && $9 > 0.85) print $1":"$2"-"$3 }}' > {output.duptsv}
+		#~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >8999 && $9 > 0.80) print $1":"$2"-"$3 }}' > {output.duptsv}
 		~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity > {output.duptsv}
 		"""
 
@@ -954,12 +964,14 @@ rule ConvertTsvToBedAndRgn:
 	input:
 		duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
 	output:
-		dupbed=dynamic("LocalAssemblies/{region}/ref.fasta.long.bed")
+		bedDone="LocalAssemblies/bed.done.txt",
+		#dupbed=dynamic("LocalAssemblies/{region}/ref.fasta.long.bed")
 	params:
 		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=3:00:00",
 	run:
 		df = pd.read_csv( input["duptsv"], sep="\t", header=None,
-				names=["contig", "start", "end", "read", "x", "y", "length", "z", "perID", "m", "mm", "i", "d"])
+				names=["contig", "start", "end", "read", "x", "y", "z", "z", "perID", "m", "mm", "i", "d"])
+		df["length"] = df["end"] - df["start"]
 		df=df.ix[ (df["length"]>=9000) & (df["perID"] > 0.85) ]
 		df.reset_index(drop=True, inplace=True)
 		
@@ -980,22 +992,35 @@ rule ConvertTsvToBedAndRgn:
 				group[["contig", "start", "end"]].to_csv(outfile, sep="\t", index=False, header=False)
 				outfile2 = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
 				group[["contig", "longstart", "longend"]].to_csv(outfile2, sep="\t", index=False, header=False)
-
+		shell("touch " + output["bedDone"])
 					
 #
 # actaully fetch that region from the genome 
 #
 rule getReferenceSequences:
 	input:
-		duplong="LocalAssemblies/{region}/ref.fasta.long.bed",
+		#duplong="LocalAssemblies/{region}/ref.fasta.long.bed",
+		bedDone="LocalAssemblies/bed.done.txt",
+		regions="LocalAssemblies/regions.txt",
 	output:
-		dup="LocalAssemblies/{region}/duplications.fasta",
+		#dup="LocalAssemblies/{region}/duplications.fasta",
+		refDone="LocalAssemblies/README.txt",
 	params:
 		sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
-	shell:
-		"""
-		bedtools getfasta -fi {GRCh38} -bed {input.duplong} > {output.dup} 
-		"""
+	run:
+		regions = open(input["regions"])
+		for region in regions.readlines(): 
+			region = region.strip()[:-1]
+			bedfile = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
+			fastafile = "LocalAssemblies/{}/duplications.fasta".format(region)
+			cmd = "bedtools getfasta -fi {} -bed {} > {}".format(GRCh38, bedfile, fastafile)
+			if(os.path.exists(bedfile)):
+				shell(cmd)
+		shell("touch " + output["refDone"])
+
+
+
+
 
 
 

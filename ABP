@@ -34,12 +34,12 @@ fi
 # to handle those things, but I have to check to see if you have it installed
 # this should no longer be nessisary, whatshap is installed in one of our modules
 # 
-if [ -d $HOME/.conda/envs/whatshap ]; then
-     echo "conda env exists, continuing"
-else
-    echo "whatshap does not exist, installing, may take some time"
-    conda env create -f $base2/whatshap.env.yml
-fi
+#if [ -d $HOME/.conda/envs/whatshap ]; then
+#     echo "conda env exists, continuing"
+#else
+#    echo "whatshap does not exist, installing, may take some time"
+#    conda env create -f $base2/whatshap.env.yml
+#fi
 
 
 # run the pipeline
@@ -51,7 +51,8 @@ elif [ "$1" == "PSV2" ]; then
     snakemake -p -s $base2/ABP2.py
 else
     echo "Running PSV1 and PSV2"
-    snakemake -p --cores $NPROC -s $base2/ABP1.py && snakemake -p --cores $NPROC -s $base2/ABP2.py 
+    snakemake --rerun-incomplete -p --cores $NPROC -s $base2/ABP1.py \
+		&& snakemake --rerun-incomplete -p --cores $NPROC -s $base2/ABP2.py 
     popd
 fi 
 
