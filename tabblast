@@ -1,0 +1,22 @@
+#!/bin/bash
+source ~mvollger/projects/builds/anaconda/activateConda3.sh
+
+blastn -task megablast \
+        -db ~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta \
+        -query "$1" \
+        -out $2 \
+        -num_threads $(nproc) \
+        -word_size 100 \
+        -min_raw_gapped_score 1000 \
+        -perc_identity 99.8 \
+        -lcase_masking -soft_masking true \
+        -xdrop_ungap 10 -xdrop_gap 50 -penalty -3 \
+        -num_alignments 100000 \
+        -qcov_hsp_perc 90 \
+        -parse_deflines \
+        -outfmt "7 score sstrand qseqid sseqid pident slen qlen length qcovhsp qcovs nident mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+
+
+
+
+

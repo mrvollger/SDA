@@ -1,0 +1,26 @@
+#!/bin/bash
+source ~mvollger/projects/builds/anaconda/activateConda3.sh
+
+blastn -task megablast \
+        -db ~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta \
+        -query "$1" \
+        -out $2 \
+        -num_threads $(nproc) \
+        -word_size 100 \
+        -min_raw_gapped_score 1000 \
+        -perc_identity 99.8 \
+        -lcase_masking -soft_masking true \
+        -xdrop_ungap 10 -xdrop_gap 50 -penalty -3 \
+        -num_alignments 100000 \
+        -qcov_hsp_perc 90 \
+        -parse_deflines \
+        -outfmt "5" # xml
+		#-outfmt "17 SQ SR" # does what I want, gives me query seq and has the correct name order
+        #-outfmt "17 SR" # shows the erference as the reference, but has no sequence strand
+        #-outfmt "17 SQ" 3 shows the reference as the query, and thus has ref seq
+        #-outfmt "7 score qseqid sseqid pident slen qlen length qcovhsp qcovs mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+
+
+
+
+
