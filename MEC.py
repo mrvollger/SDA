@@ -4,7 +4,7 @@ import argparse
 parser = argparse.ArgumentParser(description="")
 parser.add_argument("fragMat", help="assembly.counsensous.fragments.snv.mat" )
 parser.add_argument("cuts", help="mi.gml.cuts" )
-parser.add_argument("--out", help="read group parings", default = "read.partition.tsv" )
+parser.add_argument("--out", help="output sam file with cc group parings", default = "reads.cc.bam" )
 parser.add_argument("--sam", default="reads.bam", help="file with reas to be partitioned." )
 parser.add_argument("-v","--verbose", action="store_true", default=False, help="verbose" )
 parser.add_argument("-c","--compare", action="store_true", default=False, help="verbose" )
@@ -141,18 +141,48 @@ def runMEC(reads, cuts):
 	#print(cuts[:,psvPos])
 	return(partition)
 
+def reverseDict(partition):
+	readCuts = {}
+	for group in partition:
+		reads = partition[group]
+		for read in reads:
+			readCuts[read] = group
+	return(readCuts)
+
 np.set_printoptions(linewidth=3000)
 reads = readMat(args.fragMat)
 cuts = readCuts(args.cuts)
+# key is the group number value is a list of reads for that group
 partition = runMEC(reads, cuts)
-del partition[-1]
+# key is a read name, value is its group
+readCuts = reverseDict(partition)
+#del partition[-1]
 
+inbam = pysam.AlignmentFile(args.sam)
+outbam=pysam.Samfile(args.out, "wb", template=inbam)
 
-# write to bam files
+# write sam files
+for read in inbam.fetch(until_eof=True):
+	name = read.query_name
+	try:
+		group = readCuts[name]
+		read.tags += [('cc', group)]
+		outbam.write(read)
+	except Exception, err:
+		print( name)
+		print("There was no read by that name partitioned by MEC, most probably a bug")
+		#exit()
+
+inbam.close()
+outbam.close()
+exit()
+
+# write to sam files
 inbam = pysam.AlignmentFile(args.sam)
 outsams = {}
 invPar = {}
 for group in partition:
+	print(group, partition[group])
 	name = "group." + str(group) + "/H2.MEC.sam"
 	gsam = pysam.AlignmentFile( name , "w", template=inbam)
 	outsams[group] = gsam

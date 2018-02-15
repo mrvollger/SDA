@@ -15,7 +15,7 @@ Requires a file called reads.orig.bam, ref.fasta should also be there, and it wi
 of duplications.fasta, if it is there, also a config file called coverage.json
 """
 
-blasr = '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
+blas = '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
 blasrDir = '~mchaisso/projects/blasr-repo/blasr'
 scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
 #scriptsDir = '~mvollger/projects/abp_repo/abp/abp'
@@ -39,7 +39,7 @@ if(os.path.exists("coverage.json")):
 		input:
 			dupbed="ref.fasta.bed",
 			depth="dup_depth.tsv",
-			png="depthProfile.png",
+			#png="depthProfile.png",
 			thresholdPng="hetProfile/threshold.png",
 			pdf='mi.cuts.gml.pdf',
 			mean = "dup_mean.intersect",
@@ -55,7 +55,7 @@ else:
 	# if there is no min and max coverage only run the script up until the hetprofile part
 	rule all:	
 		input:
-			png="depthProfile.png",
+			#png="depthProfile.png",
 			thresholdPng="hetProfile/threshold.png",
 		message: 'Running only to generate the het profile, must include a coverage.json to run the full thing'
 
@@ -132,7 +132,9 @@ elif(os.path.exists("reads.fofn")):
             """
 
 else:
-    print("NO INPUT READS!!!")
+	print("NO INPUT READS!!!")
+	exit()
+
 
 rule index_realigned_reads:
 	input:
@@ -143,8 +145,7 @@ rule index_realigned_reads:
 		'samtools index {input}'	
 
 #
-#
-# get a depth profile and reads in a fasta format
+# get fasta from bam
 #
 rule reads_to_fasta:
     input:
@@ -154,6 +155,9 @@ rule reads_to_fasta:
     shell:
         '''samtools view {input} | awk '{{ print ">"$1; print $10; }}' > {output}'''
 
+#
+# get a depth profile and reads in a fasta format
+#
 rule depthFromBam:
     input:
         reads="reads.fasta",

@@ -199,11 +199,11 @@ rule readsFromSam:
 			|| touch group.{wildcards.n}/{wildcards.prefix}.temp.txt
 
 		if [ -s group.{wildcards.n}/{wildcards.prefix}.temp.txt ]; then
-            >&2 echo " no real assembly"
            cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
                ~mchaisso/projects/PacBioSequencing/scripts/falcon/FormatFasta.py --fakename  > \
 				{output.pfasta};
         else
+            >&2 echo " no real assembly"
             touch {output.pfasta};
         fi
 
@@ -223,6 +223,9 @@ rule runAssembly:
     threads: 16
     shell:
         """
+		# make sure we actaully re run the assembly
+		rm -rf group.{wildcards.n}/{wildcards.prefix}.assembly/*
+
         if [ -s {input} ]; then
             module load java/8u25 && {CANU_DIR}/canu -pacbio-raw {input} genomeSize=60000 \
                 -d group.{wildcards.n}/{wildcards.prefix}.assembly \
@@ -570,9 +573,7 @@ else:
 
 
 
-#-----------------------------------------------------------------------------------------------------#
-#
-# checks to see if the assembly exists and if not removes the empty file if it does not and all other 
+#--------------------------------------------------------------------------------------------# checks to see if the assembly exists and if not removes the empty file if it does not and all other 
 # empty files
 # creats a group output file
 # then creats a empty file singinaling we are done
@@ -609,7 +610,7 @@ rule combineAsm:
 		counter = 1
 		toAdd = []
 		for asm in sorted( glob.glob("group.*/WH.assembly.consensus.fasta")): 
-			match = re.match( "(group.\d+)/WH.assembly.*", asm)
+			match = re.match( "(group.\d+)/WH.assembly.consensus.fasta", asm)
 			group = match.group(1)
 			print(group)
 			recs = list(SeqIO.parse(asm, "fasta"))
@@ -618,6 +619,7 @@ rule combineAsm:
 				rec.name = rec.id
 				rec.seq = rec.seq.strip("N")
 				counter += 1
+				print(rec.id)
 				toAdd.append(rec)
 		#print(rtn)
 		SeqIO.write(toAdd ,output["asmWH"], "fasta" ) 
@@ -633,54 +635,117 @@ cross_match -tags -alignments -masklevel 0 -minmatch 50 -bandwidth 250 """
 """-gap_ext -1 -gap_init -10 -penalty -1""" 
 """#blasr -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}"""
 
-#
-rule map_asms_to_ref:
-	input:
-		asmWH="WH.assemblies.fasta",
-		ref="ref.fasta"
-	output:
-		cm="WH.cm",
-	shell:
-		"""
-		{CM} {input.asmWH} {input.ref}  > {output.cm}
-		"""
+useBlasr=True
 
-rule map_asms_to_duplicaitons:
-	input:
-		asmWH="WH.assemblies.fasta",
-		ref="duplications.fixed.fasta"
-	output:
-		cm="WH_dup.cm",
-		blasr="WH_dup.blasr.sam",
-	shell:
-		"""
-		blasr -bestn 1 -sam -clipping soft {input.asmWH} {input.ref} -out {output.blasr}
-		{CM} {input.asmWH} {input.ref}  > {output.cm}
-		"""
-#
-rule map_asms_to_ref_convert:
-	input:
-		cm="WH.cm",
-	output:
-		sam="WH.sam",
-		tsv="WH.tsv",
-	shell:
-		"""
-		~mvollger/projects/cmpSeq/cmToSam.py {input.cm} {output.sam}
-		~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
-		"""
+if(useBlasr):
+	rule mapToRefAndDupsBlasr:
+		input:	
+			asmWH="WH.assemblies.fasta",
+			ref="ref.fasta",
+			dup="duplications.fixed.fasta",
+		output:
+			refsam="WH.sam",
+			dupsam="WH_dup.sam",
+		threads: 8
+		shell:
+			"""
+			blasr -nproc {threads} -sam -clipping soft -out /dev/stdout \
+				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
+				{input.asmWH} {input.ref} | \
+				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.refsam}
+			
+			blasr -nproc {threads} -sam -clipping soft -out /dev/stdout \
+				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
+				{input.asmWH} {input.dup} | \
+				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
+			
+			"""
+	rule getTablesFromSam:
+		input:
+			refsam="WH.sam",
+			dupsam="WH_dup.sam",
+		output:
+			dup="WH_dup.tsv",
+			ref="WH.tsv",
+		shell:
+			"""
+			~mvollger/projects/utility/samIdentity.py --header {input.refsam} > {output.ref}
+			~mvollger/projects/utility/samIdentity.py --header {input.dupsam} > {output.dup}
+			"""
 
-rule map_asms_to_duplicaitons_convert:
-	input:
-		cm="WH_dup.cm",
-	output:
-		sam="WH_dup.sam",
-		tsv="WH_dup.tsv",
-	shell:
-		"""
-		~mvollger/projects/cmpSeq/cmToSam.py {input.cm} {output.sam}
-		~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
-		"""
+
+else:
+	rule map_asms_to_ref:
+		input:
+			asmWH="WH.assemblies.fasta",
+			ref="ref.fasta"
+		output:
+			cm="WH.cm",
+		shell:
+			"""
+			{CM} {input.asmWH} {input.ref}  > {output.cm}
+			"""
+
+	#blasr -bestn 1 -sam -clipping soft {input.asmWH} {input.ref} -out {output.blasr}
+	#{CM} {input.asmWH} {input.ref}  > {output.cm}
+	rule map_asms_to_duplicaitons:
+		input:
+			asmWH="WH.assemblies.fasta",
+			ref="duplications.fixed.fasta"
+		output:
+			#cm="WH_dup.cm",
+			#blasr="WH_dup.blasr.sam",
+			#{CM} {input.asmWH} {input.ref}  > {output.cm}
+			blast="WH_dup.blast",
+		threads: 8
+		shell:
+			"""
+			blatdb="~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta.2bit"		
+			# for a blast alignmnet 
+			source ~mvollger/projects/builds/anaconda/activateConda3.sh
+			blastn -task megablast \
+					-db ~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta \
+					-query {input.asmWH} \
+					-out {output.blast} \
+					-word_size 50 \
+					-parse_deflines \
+					-num_threads {threads} \
+					-num_alignments 1 \
+					-outfmt "7 score sstrand qseqid sseqid pident slen qlen length qcovhsp qcovs nident mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
+					#-max_target_seqs 1 \
+					#-max_hsps 1 \
+				
+			"""
+	#
+	rule map_asms_to_ref_convert:
+		input:
+			cm="WH.cm",
+		output:
+			sam="WH.sam",
+			tsv="WH.tsv",
+		shell:
+			"""
+			# the sam pipe excludes none primary alignmnets 
+			~mvollger/projects/cmpSeq/cmToSam.py {input.cm} | samtools view -h -F 256 >  {output.sam}
+			~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
+			"""
+
+	rule map_asms_to_duplicaitons_convert:
+		input:
+			blast="WH_dup.blast",
+			#cm="WH_dup.cm",
+		output:
+			sam="WH_dup.sam",
+			tsv="WH_dup.tsv",
+		shell:
+			"""
+			~mvollger/projects/cmpSeq/cmToSam.py --blast {input.blast} | \
+					samtools view -h -F 256 >  {output.sam}
+			~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
+			"""
+
+
+
 
 rule plot_seqs_on_dup:
     input:
@@ -692,7 +757,7 @@ rule plot_seqs_on_dup:
         """
         {utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
         """
-
+'''
 rule plot_seqs_on_cov:
     input:
         depth="depth.tsv",
@@ -703,6 +768,8 @@ rule plot_seqs_on_cov:
         """
         {utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
         """
+'''
+
 #
 # create a map of the coverage across the assembled duplications
 #
@@ -719,7 +786,8 @@ rule coverageOnAsms:
 	shell:
 		"""
 		cat {input.ref} {input.asm} > refAndWH.fasta
-		{blasr} {input.reads} refAndWH.fasta -clipping soft -nproc {threads} -bestn 1 -sam -out /dev/stdout | \
+		{blasr} {input.reads} refAndWH.fasta -clipping soft \
+				-nproc {threads} -bestn 1 -sam -out /dev/stdout | \
 				samtools view -bS - | \
 				samtools sort -m 4G -o {output.bam} - 
 				samtools index {output.bam}
@@ -797,7 +865,7 @@ rule final:
 		plot="CoverageOnAsm.png",
 		summary="summary.txt",
 		truth="truth/README.txt",
-		seqPNG="seqs.png",
+		#seqPNG="seqs.png",
 		dupPND="seqsOnDup.png",
 		asmbed="asm.bed",
 		plotReal="SeqsOnReal.png",

@@ -81,7 +81,7 @@ rule splitRef:
 		split = expand("reference/split/ref.{idx}.fasta", idx=range(0,10) ),
 		readme = "reference/README.txt",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=12:00:00",
 	run:
 		shell("mkdir -p " + DIRS)
 		shell("echo creating my own mask > " + output["readme"] )
@@ -110,7 +110,7 @@ rule CreateMask:
 	output:
 		split = "reference/mask{idx}/ref.masked.{idx}.fasta"
 	params:
-		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=12:00:00",
 	shell:
 		"""
 		dir=reference/mask{wildcards.idx}
@@ -128,7 +128,7 @@ rule RepeateMasker:
 	output:
 		RMout = "reference/mask{idx}/ref.{idx}.fasta.out"
 	params:
-		sge_opts=" -pe serial 4 -l mfree=4G -l h_rt=12:00:00",
+		cluster=" -pe serial 4 -l mfree=4G -l h_rt=12:00:00",
 	shell:
 		"""
 		dir=reference/mask{wildcards.idx}
@@ -150,7 +150,7 @@ rule mergeRepeateMasker:
 	output:
 		RMout = "reference/ref.RM.out",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
 	shell:
 		"""
 		cat {input.split} > {output.RMout}
@@ -165,7 +165,7 @@ rule RepeateMaskerBed:
 	output:
 		RM = "reference/ref.RM.out.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
 	shell:
 		"""
 		/net/eichler/vol2/home/mvollger/projects/abp/RepeatMaskingToBed.py {input.RMout}
@@ -181,7 +181,7 @@ rule mergeMask:
 	output:
 		ref = "reference/ref.masked.fasta",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
 	run:
 		seqs = []
 		for myfile in input["split"]:	
@@ -198,7 +198,7 @@ rule CreateBed:
 	output:
 		bed = "reference/mask{idx}/ref.masked.{idx}.bed"
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
 	shell:
 		"""
 		input=reference/mask{wildcards.idx}/*.dat
@@ -213,7 +213,7 @@ rule mergeBed:
 	output:
 		bed = "reference/trf.masking.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
 	shell:
 		"""
 		cat {input.bed} > temp.bed
@@ -232,7 +232,7 @@ rule mergeTRFandRM:
 	output:
 		allR = "reference/all.repeats.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
 	shell:
 		"""
 		cat {input.bed} {input.RM} > temp.bed
@@ -251,7 +251,7 @@ rule MakeASMsa:
     output:
         asmsa=reference + ".sa"
     params:
-        sge_opts=" -pe serial 1 -l mfree=48G -l h_rt=6:00:00",
+        cluster=" -pe serial 1 -l mfree=48G -l h_rt=6:00:00",
         blasr=config["blasr"]
     shell:
         """
@@ -266,7 +266,7 @@ rule IndexASM:
 	output:	
 		fai=reference + ".fai",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=1:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=1:00:00",
 	shell:
 		"""
 		samtools faidx {input.ref}
@@ -282,7 +282,7 @@ rule SplitFOFN:
     output:
         fofnSplit=dynamic("fofns/reads.{index}.fofn")
     params:
-        sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+        cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
         baxPerJob=config["bax_per_job"]
     shell:
         """
@@ -303,7 +303,7 @@ rule MapReads:
     output:
         align="alignments/align.{index}.bam"
     params:
-        sge_opts=" -pe serial 8 -l mfree=8G -l h_rt=24:00:00",
+        cluster=" -pe serial 8 -l mfree=8G -l h_rt=24:00:00",
         blasr=config["blasr"]
     shell:
         """
@@ -322,11 +322,12 @@ rule MapReads:
 # 
 rule BamIndex:
     input:
-        bam="alignments/align.{index}.bam"
+        bam=rules.MapReads.output.align,
+        #bam="alignments/align.{index}.bam",
     output:
-        bed="alignments/align.{index}.bam.bai"
+        bai="alignments/align.{index}.bam.bai"
     params:
-        sge_opts=" -pe serial 1 -l mfree=2G -l h_rt=24:00:00",
+        cluster=" -pe serial 1 -l mfree=2G -l h_rt=24:00:00",
     shell:
         """
         samtools index {input.bam}
@@ -337,12 +338,14 @@ rule BamIndex:
 #
 rule BamToBed:
     input:
-        bam="alignments/align.{index}.bam",
-        bai="alignments/align.{index}.bam.bai"
+        bam=rules.MapReads.output.align,
+        #bam="alignments/align.{index}.bam",
+        bai=rules.BamIndex.output.bai,
+        #bai="alignments/align.{index}.bam.bai"
     output:
         bed="alignments/align.{index}.bam.bed"
     params:
-        sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
+        cluster=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
         samutils=config["mcutils"]
     shell:
         """
@@ -360,7 +363,7 @@ rule FaiToBed:
 		regions="coverage/regions.100.bed",
 		regions1k="coverage/regions.1000.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=2G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=2G -l h_rt=24:00:00",
 	run:
 		fai = open(input["asmfai"])
 		out = ""
@@ -392,11 +395,12 @@ rule FaiToBed:
 rule BedToCoverage:
     input:
         regions="coverage/regions.100.bed",
-        bed="alignments/align.{index}.bam.bed",
+        bed=rules.BamToBed.output.bed,
+		#bed="alignments/align.{index}.bam.bed",
     output:
         coverage="coverage/coverage.{index}.bed",
     params:
-        sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
+        cluster=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
     shell:
         """
 		# get coverage and then sort by contig and then pos
@@ -409,13 +413,14 @@ rule BedToCoverage:
 #
 rule MergeBed:
 	input:
-		coverage=dynamic("coverage/coverage.{index}.bed"),
+		coverage=dynamic(rules.BedToCoverage.output.coverage),
+		#coverage=dynamic("coverage/coverage.{index}.bed"),
 	output:
 		bedsort="coverage/all.merged.bed",
 	benchmark:
 		"benchmarks/merge.bed.txt"
 	params:
-		sge_opts=" -pe serial 1 -l mfree=32G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=32G -l h_rt=24:00:00",
 	run:
 		files = sorted(input["coverage"])
 		cols = ["contig", "start", "end", "cov"]
@@ -441,7 +446,7 @@ rule GetOneKregionCoverage:
 	output:
 		bed="coverage/all.1000.merged.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
 	run:
 		print("starting the read of all.merged.bed")
 		cols = ["contig", "start", "end", "coverage"]
@@ -477,7 +482,7 @@ rule FiveKWindowStepOneK:
 	output:
 		bed="coverage/all.5000.merged.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
 	run:
 		cols = ["contig", "start", "end", "coverage"]
 		dtypes = {"contig":str, "start":int, "end":int, "cov":float}
@@ -513,7 +518,7 @@ rule GetCoverageStats:
 		oneK="coverage/all.1000.stats.txt",
 		fiveK="coverage/all.5000.stats.txt",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
 	run:
 		for infile, outfile in zip(input, output):
 			bed = pd.read_csv(infile, sep = "\t", header=None,
@@ -533,7 +538,7 @@ rule GenerateMinAndMax:
 		minmax="MinMax.sh",
 		json="MinMax.json"
 	params:
-		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=1G -l h_rt=24:00:00",
 	run:
 		stats = pd.read_csv(input["stats"], header = 0, sep = "\t")
 		# the plust one is to make it round up
@@ -556,7 +561,7 @@ rule CountOverlappingRepeatElements:
 	output:
 		repeatCounted="coverage/all.repeatCounted.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
 	shell:
 		"""
 		bedtools intersect -a {input.combined} -b {input.allR} -wao | \
@@ -584,7 +589,7 @@ rule BedForCollapses:
 		temp = "coverage/unmerged.100.collapses.bed",
 		collapses="coverage/unmerged.collapses.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
 	run:
 		#cov = json.load(open(input["json"]))
 		bed = pd.read_csv(input["combined"], sep = "\t", header=None, 
@@ -662,7 +667,7 @@ rule MergeBedForCollapses:
 	output:
 		unf = "unfiltered.collapses.bed",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
 	run:	
 		# read in the merged set
 		HCR = pd.read_csv(input["collapses"], sep = "\t", header=None, 
@@ -696,7 +701,7 @@ rule FilterCollapses:
 		collapses="collapses.bed",
 		png ="SizeRepeatFilter.png",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
 	run:
 		collapses = pd.read_csv(input["unf"], sep = "\t", header=None, 
 				names=['contig', 'start', 'end', "notR", 'coverage', "RC", "length", "contigl", "distToEnd"])
@@ -724,7 +729,7 @@ rule LocalAssembliesRegions:
 	output:
 		regions="LocalAssemblies/regions.txt",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
 	run:
 		df = pd.read_csv(input["collapses"], sep="\t", header=None)
 		df["start"] = df[1]#/100
@@ -747,6 +752,7 @@ rule LocalAssembliesRegions:
 		# add new direcotires 
 		shell("mkdir -p " + dirsForShell)
 
+
 #
 # add a bed file to each region specifying where in asm they were 
 #
@@ -756,8 +762,9 @@ rule LocalAssembliesBed:
 		regions="LocalAssemblies/regions.txt",
 	output:
 		bed=dynamic("LocalAssemblies/{region}/orig.bed"),
+		rgn=dynamic("LocalAssemblies/{region}/orig.rgn"),
 	params:
-		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
 	run:
 		rfile = open(input["regions"])
 		regions=[]
@@ -773,20 +780,27 @@ rule LocalAssembliesBed:
 		cmd = ""
 		for line, region in zip(collapses,regions):
 			line = line.split("\t")
-			seq = "{}\t{}\t{}".format(line[0], int(float(line[1])), int(float(line[2])) )
-			cmd += "echo {} > {}/orig.bed; ".format(seq, region)
+			# for making the bed file
+			bed = "{}\t{}\t{}".format(line[0], int(float(line[1])), int(float(line[2])) )
+			cmd += "echo {} > {}/orig.bed; ".format(bed, region)
+			# for making the regions file
+			rgn = "{}:{}-{}".format(line[0], int(float(line[1])), int(float(line[2])) )
+			cmd += "echo {} > {}/orig.rgn; ".format(rgn, region)
+
 		shell(cmd)
 #
 # same as above but in a different format
 # this rule requires a long latency wait time for some reason ~60 seconds 
 #
+'''
 rule LocalAssembliesRgn:
 	input:
+		#bed=rule.LocalAssembliesBed.output.bed, #this does not work because the output is dynamic()
 		bed = "LocalAssemblies/{region}/orig.bed"
 	output:
 		rgn = "LocalAssemblies/{region}/orig.rgn"
 	params:
-		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
 	run:
 		myfile = open(input["bed"])
 		bed = myfile.read().strip().split()
@@ -796,6 +810,7 @@ rule LocalAssembliesRgn:
 		f = open(output["rgn"],"w+")
 		f.write(rgn)
 		f.close()
+'''
 
 #
 # using the .rgn files make a fasta file consisting of the collapse 
@@ -803,11 +818,13 @@ rule LocalAssembliesRgn:
 rule LocalAssembliesRef:
 	input:
 		rgn="LocalAssemblies/{region}/orig.rgn",
+		bed="LocalAssemblies/{region}/orig.bed",
 		asm=config["asm"]
+		#rgn=rules.LocalAssembliesRgn.output.rgn,
 	output:
 		refs="LocalAssemblies/{region}/ref.fasta",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
+		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
 	shell:
 		"""
 		region=$(cat {input.rgn})
@@ -824,13 +841,15 @@ rule LocalAssembliesRef:
 #
 rule LocalAssembliesBam:
 	input:
-		refs="LocalAssemblies/{region}/ref.fasta",
-		rgn="LocalAssemblies/{region}/orig.rgn",
-		bed = "LocalAssemblies/{region}/orig.bed",
+		refs=rules.LocalAssembliesRef.output.refs,
+		rgn= rules.LocalAssembliesRef.input.rgn,
+		bed= rules.LocalAssembliesRef.input.bed,
+		#refs="LocalAssemblies/{region}/ref.fasta",
+		#rgn="LocalAssemblies/{region}/orig.rgn",
 	output:
 		bams="LocalAssemblies/{region}/reads.orig.bam"
 	params:
-		sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
+		cluster=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
 	run:
 		import pysam
 		myfile = open(input["rgn"])
@@ -869,11 +888,12 @@ rule LocalAssembliesBam:
 rule LocalAssembliesConfig:
 	input:
 		MinMax="MinMax.json",
-		bams="LocalAssemblies/{region}/reads.orig.bam"
+		bams=rules.LocalAssembliesBam.output.bams,
+		#bams="LocalAssemblies/{region}/reads.orig.bam"
 	output:
 		cov="LocalAssemblies/{region}/coverage.json",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
 		project=config["project"],
 	run:
 		f = open(input["MinMax"])
@@ -899,12 +919,14 @@ sa = GRCh38 + ".sa"
 #
 rule combineRefFasta:
 	input:
-		cov=dynamic("LocalAssemblies/{region}/coverage.json"),
-		dupref=dynamic("LocalAssemblies/{region}/ref.fasta"),
+		cov=dynamic(rules.LocalAssembliesConfig.output.cov),
+		#cov=dynamic("LocalAssemblies/{region}/coverage.json"),
+		dupref=dynamic(rules.LocalAssembliesRef.output.refs),
+		#dupref=dynamic("LocalAssemblies/{region}/ref.fasta"),
 	output:
 		allref="LocalAssemblies/all.ref.fasta",
 	params:
-		sge_opts=" -pe serial 4 -l mfree=4G -l h_rt=3:00:00",
+		cluster=" -pe serial 4 -l mfree=4G -l h_rt=3:00:00",
 	shell:
 		"""
 		> {output.allref}
@@ -924,7 +946,7 @@ rule duplicationsFasta1:
 		dupsam="LocalAssemblies/all.ref.fasta.sam",
 	params:
 		blasr=config["blasr"],
-		sge_opts=" -pe serial 4 -l mfree=16G -l h_rt=12:00:00",
+		cluster=" -pe serial 4 -l mfree=16G -l h_rt=12:00:00",
 	shell:
 		"""
 		# for some reason if i use the version of blasr in params.blasr it fails.
@@ -933,10 +955,16 @@ rule duplicationsFasta1:
 		# so I will use the regualrly loaded blasr
 		# {params.blasr}/alignment/bin/blasr  
 		echo "here"	
-		blasr -clipping subread {input.dupref} {GRCh38} -nproc 4 -sa {sa} \
-				-sam -bestn 30 -minMatch 15 -maxMatch 20 \
-				-out {output.dupsam}
+		#blasr -clipping subread {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
+		#		-sam -bestn 30 -minMatch 15 -maxMatch 20 \
+		#		-out {output.dupsam}
+		
+		blasr -nproc 4 -sa {sa} -sam -out /dev/stdout \
+			-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
+			{input.dupref} {GRCh38} | \
+			samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
 		echo "here2"
+
 		"""
 		
 #
@@ -948,7 +976,7 @@ rule getHighIdentity:
 	output:
 		duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
 	shell:
 		"""
 		#~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >8999 && $9 > 0.80) print $1":"$2"-"$3 }}' > {output.duptsv}
@@ -967,12 +995,12 @@ rule ConvertTsvToBedAndRgn:
 		bedDone="LocalAssemblies/bed.done.txt",
 		#dupbed=dynamic("LocalAssemblies/{region}/ref.fasta.long.bed")
 	params:
-		sge_opts=" -pe serial 1 -l mfree=1G -l h_rt=3:00:00",
+		cluster=" -pe serial 1 -l mfree=1G -l h_rt=3:00:00",
 	run:
 		df = pd.read_csv( input["duptsv"], sep="\t", header=None,
 				names=["contig", "start", "end", "read", "x", "y", "z", "z", "perID", "m", "mm", "i", "d"])
 		df["length"] = df["end"] - df["start"]
-		df=df.ix[ (df["length"]>=9000) & (df["perID"] > 0.85) ]
+		df=df.ix[ (df["length"]>=5000) & (df["perID"] > 0.80) ]
 		df.reset_index(drop=True, inplace=True)
 		
 		allbed = "LocalAssemblies/all.ref.fasta.bed"
@@ -1006,7 +1034,7 @@ rule getReferenceSequences:
 		#dup="LocalAssemblies/{region}/duplications.fasta",
 		refDone="LocalAssemblies/README.txt",
 	params:
-		sge_opts=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
+		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
 	run:
 		regions = open(input["regions"])
 		for region in regions.readlines(): 

@@ -1,4 +1,7 @@
 #!/usr/bin/env Rscript
+#lib="/home/mrvollger/anaconda3/lib/R/library"
+#.libPaths(lib)
+#.libPaths( c( .libPaths(), lib ))
 library(ggplot2)
 library(plyr)
 require(gridExtra)
@@ -11,6 +14,13 @@ library(dplyr)
 library(splitstackshape)
 library(stringr)
 library(data.table)
+library(networkD3)
+library(bedr)
+library(Cairo)
+library(evaluate)
+library(extrafont)
+font_import()
+
 suppressPackageStartupMessages(library("argparse"))
 # create defualt files to run
 genome = "Mitchell_CHM13_V2"
@@ -22,7 +32,7 @@ res <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.mean.resolved", 
 unr <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.mean.unresolved", genome) )[1]
 res <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.fasta.resolved", genome) )[1]
 unr <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.fasta.unresolved", genome) )[1]
-euch <- Sys.glob(sprintf("~/Desktop/data/genomeWide/Mitchell_CHM1/LocalAssemblies/euchromatic.hg38.bed", genome) )[1]
+#euch <- Sys.glob(sprintf("~/Desktop/data/genomeWide/Mitchell_CHM1/LocalAssemblies/euchromatic.hg38.bed", genome) )[1]
 tsv = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/localAssemblyStats.tsv", genome)
 des = sprintf("~/Desktop/Public/%s/", genome)
 # create parser object
@@ -46,7 +56,10 @@ mAsm = "Multiple Assemblies"
 theme_set(theme_gray(base_size = 24))
 h=20
 w=30
-myTheme =theme(plot.title = element_text(face = "bold", size = rel(1.2), hjust = 0.5),
+font="serif"
+font="Comic Sans MS"
+font="Times"
+myTheme =theme(plot.title = element_text(face = "bold", size = rel(1.2), hjust = 0.5, family=font),
                text = element_text(),
                panel.background = element_blank(),
                panel.grid.major = element_blank(), 
@@ -77,7 +90,12 @@ myColors
 mysave <- function(name, p){
   if(args$dest != ""){
     args$dest = paste0(args$dest, "/")
-  ggsave(paste0(args$dest, name), plot = p,  width = w, height = h, units = "cm")
+    file = paste0(args$dest, name)
+    ggsave(file, plot = p,  width = w, height = h, units = "cm")
+    # save as an svg as well
+    svg(paste0(file, ".svg"), width = w/2, height = h/2)
+    print(p)
+    dev.off()
   }
 }
 
@@ -211,8 +229,11 @@ dfu = df[!duplicated(df$collapse),]
 dfs=df[df$Status==res | df$Status==pr, ]
 dfpr = dfs[dfs$Status == pr, ]
 # sum of each assembly type
+counts = c(sum(df$Status==pr), sum(df$Status==res), sum(df$Status==failed), sum(df$Status==mAsm))
+names(counts) = c(pr,res,failed,mAsm)
+counts
 statusCounts = data.frame(Status = c(pr, res, failed, mAsm), 
-                     counts = c(sum(df$Status==pr), sum(df$Status==res), sum(df$Status==failed), sum(df$Status==mAsm)))
+                     counts = counts)
 dim(df)
 statusCounts
 
@@ -222,7 +243,73 @@ p0 <- ggplot(df, aes(Status, fill=Status)) + geom_bar() +
   geom_text(data=statusCounts, aes(y=counts, x=Status, label=counts),vjust=-.1, size = 8) +
   scale_fill_manual(values=col4) + myTheme 
 p0
-mysave("statusHist.svg", p0)
+mysave("statusHist.pdf", p0)
+
+
+
+nodes <- data.frame(name=c(
+"Clusters",
+failed,
+"Assembled",
+mAsm,
+"Successful Assemblies",
+pr,
+res))
+nodes
+
+source=c()
+target=c()
+value=c()
+# failed
+    source = c(source, 0)
+    target = c(target, 1)
+    value=c(value, counts[failed])
+# mAsm
+    source = c(source, 0)
+    target = c(target, 2)
+    value=c(value, counts[res] + counts[pr] + counts[mAsm] )
+    
+    source = c(source, 2)
+    target = c(target, 3)
+    value=c(value, counts[mAsm])
+    
+# res
+    source = c(source, 2)
+    target = c(target, 4)
+    value=c(value, counts[res] + counts[pr] )
+    
+    source = c(source, 4)
+    target = c(target, 6)
+    value=c(value, counts[res])
+    
+# diverged
+    source = c(source, 4)
+    target = c(target, 5)
+    value=c(value, counts[pr])
+    
+    
+links = data.frame(source, target, value)
+library(rbokeh)
+sn = sankeyNetwork(Links = links, Nodes = nodes,
+              Source = "source", Target = "target", NodeID = "name", Value="value",
+              fontSize= 12, nodeWidth = 30)
+sn
+widget2png(sn, "~/Desktop/sankey.png")
+
+
+
+URL <- paste0(
+  "https://cdn.rawgit.com/christophergandrud/networkD3/",
+  "master/JSONdata/energy.json")
+Energy <- jsonlite::fromJSON(URL)
+sankeyNetwork(Links = Energy$links, Nodes = Energy$nodes, Source = "source",
+              Target = "target", Value = "value", NodeID = "name",
+              units = "TWh", fontSize = 12, nodeWidth = 30)
+
+Energy$links
+
+
+
 
 
 #
@@ -233,7 +320,9 @@ p1 <- ggplot(df, aes(Status, PSVsPer1K, fill=Status)) +
   coord_cartesian(ylim=c(0, 100)) + 
   scale_fill_manual(values=col4) + myTheme
 p1
-mysave("PSVsPer1K.png", p1)
+mysave("PSVsPer1K.pdf", p1)
+
+
 #
 # number of PSVs per type per cluster 
 #
@@ -242,7 +331,7 @@ p1 <- ggplot(df, aes(Status, PSVsPerClusterPer1K, fill=Status)) +
   coord_cartesian(ylim=c(0, 7)) + 
   scale_fill_manual(values=col4) + myTheme
 p1
-mysave("PSVsPerClusterPer1K.png", p1)
+mysave("PSVsPerClusterPer1K.pdf", p1)
 #
 # number of PSVs per type 
 #
@@ -251,7 +340,7 @@ p1 <- ggplot(df, aes(Status, numPSVs, fill=Status)) +
   coord_cartesian(ylim=c(0, 100)) + 
   scale_fill_manual(values=col4) + myTheme
 p1
-mysave("numPSVs.png", p1)
+mysave("numPSVs.pdf", p1)
 
 
 
@@ -263,7 +352,7 @@ p2 <- ggplot(df, aes(Status, numReads, fill=Status)) +
   coord_cartesian(ylim=c(0, 800)) +
   scale_fill_manual(values=col4) + myTheme
 p2
-mysave("reads.png", p2)
+mysave("reads.pdf", p2)
 
 
 #
@@ -273,7 +362,7 @@ p3 <- ggplot(df, aes(Status, numOfCCgroups, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) +
   scale_fill_manual(values=col4) + myTheme
 p3
-mysave("numOfCCgroups.png", p3)
+mysave("numOfCCgroups.pdf", p3)
 
 #
 # copies in reference vs status 
@@ -282,7 +371,7 @@ p3 <- ggplot(df, aes(Status, copiesInRef, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   scale_fill_manual(values=col4) + myTheme
 p3
-mysave("copies.png", p3)
+mysave("copies.pdf", p3)
 
 #
 # copies in reference vs status 
@@ -291,7 +380,7 @@ p3.2 <- ggplot(df, aes(Status, averageRefPerID, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   scale_fill_manual(values=col4) + myTheme + coord_cartesian(ylim=c(90,100))
 p3.2
-mysave("averageRefPerID.png", p3.2)
+mysave("averageRefPerID.pdf", p3.2)
 
 
 #
@@ -301,7 +390,7 @@ p4 <- ggplot(df, aes(Status, aveRefLength, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   scale_fill_manual(values=col4) + myTheme
 p4
-mysave("aveRefLength.png", p4)
+mysave("aveRefLength.pdf", p4)
 
 #
 # density of resovled vs partially resolved 
@@ -311,7 +400,7 @@ p8 = ggplot(dfs, aes(x=Length, fill=Status)) + geom_density(alpha=0.8)  + scale_
   theme(axis.text.y = element_blank()) +
   xlab("Assembly length (bp)") + ylab("Density")+ myTheme
 p8
-mysave("assemblyLength.png",p8)
+mysave("assemblyLength.pdf",p8)
 
 #
 # correlation between cc number and number in reference 
@@ -323,7 +412,7 @@ p5 <- ggplot(dfu, aes(y=copiesInRef, x=numOfCCgroups)) +
   ggtitle(paste("R-squared =",as.character(corr))) +
   myTheme
 p5
-mysave("cc_copies.png", p5)
+mysave("cc_copies.pdf", p5)
 
 
 
@@ -337,7 +426,7 @@ p5 <- ggplot(dfu, aes(y=copiesInRef, x=numF)) +
   ggtitle(paste("R-squared =",as.character(corr))) +
   myTheme
 p5
-mysave("failsVsCopies.png", p5)
+mysave("failsVsCopies.pdf", p5)
 #
 # correlation numer of failuses and number of copies 
 #
@@ -348,7 +437,7 @@ p5 <- ggplot(dfu, aes(y=numOfCCgroups, x=numF)) +
   ggtitle(paste("R-squared =",as.character(corr))) +
   myTheme
 p5
-mysave("failsVsClusters.png", p5)
+mysave("failsVsClusters.pdf", p5)
 #
 # correlation numer of failuses and number of copies 
 #
@@ -361,7 +450,7 @@ p5 <- ggplot(dfu, aes(y=averageRefPerID, x=numF)) +
   coord_cartesian(ylim=c(80, 100)) +
   myTheme
 p5
-mysave("failsVsPerID.png", p5)
+mysave("failsVsPerID.pdf", p5)
 
 
 
@@ -389,7 +478,7 @@ p6 = ggplot() + geom_ribbon(data=temp, aes(x=bestPerID, ymin=0, ymax=ECDF, fill=
   theme(legend.background = element_rect(size=0.5, linetype="solid", color="black"), 
         legend.title=element_blank())
 p6
-mysave("cdf.png",p6)
+mysave("cdf.pdf",p6)
 
 p7 <- p6 +  coord_cartesian(xlim=c(99.5, 100)) +
   geom_segment(aes(x = 99.8, xend = 99.8, y = 0,  yend = miny), color="darkred") +
@@ -397,7 +486,7 @@ p7 <- p6 +  coord_cartesian(xlim=c(99.5, 100)) +
   theme(legend.background = element_rect(size=0.5, linetype="solid", color="black"), 
         legend.title=element_blank())
 p7
-mysave("cdf_zoomed.png", p7)
+mysave("cdf_zoomed.pdf", p7)
 
 #
 # figure out the number of bases at any given percent identity
@@ -422,6 +511,8 @@ mean(dfs$Length)
 median(dfs$Length)
 mean(dfr$Length)
 median(dfs[dfs$Status == res]$Length)
+summary(dfr$Length)
+
 
 bestPerID = unique(BPbyID$bestPerID) # gets the unqiue values of perId
 ECDF = ecdf(BPbyID$bestPerID)(unique(BPbyID$bestPerID)) # gets the ecdf value of each one of those unique items
@@ -452,11 +543,11 @@ p6.4 <- p6.3 +  coord_cartesian(xlim=c(97.5, 100)) +
 #
 # this takes forever and lots of memory, so only plot if I set this if statemtn
 #
-if(T){
+if(F){
   p6.3
-  mysave("cdf_by_bp.png", p6.3)
+  mysave("cdf_by_bp.pdf", p6.3)
   p6.4
-  mysave("cdf_by_bp_zoomed.png", p6.4)
+  mysave("cdf_by_bp_zoomed.pdf", p6.4)
 }
 
 
@@ -471,7 +562,7 @@ new$aveRefLen = df[df$Status=="Resolved", "aveRefLength"]
 new$chr = df[df$Status=="Resolved", "bestChr"]
 new$start= df[df$Status=="Resolved", "bestStart"]
 new$end = df[df$Status=="Resolved","bestEnd"]
-new$Status=rep("new", length(new$aveRefLen))
+new$Status=rep("ABP", length(new$aveRefLen))
 new$ID=seq(1, length(new$aveRefLen))
 new$averagePerID[new$averagePerID >= 100.0] = 99.999999
 dim(new)
@@ -533,22 +624,24 @@ summary(gw)
 # function for plotting this data
 #
 plotSegDups<-function(data, name1, name2, myColors){
+  #data = gw
   colScale <- scale_colour_manual(name = "Status", values = myColors)
-  xkb=c("1kb", "10kb", "100kb", "1,000kb")
+  xkb=c("1", "10", "100", "1,000")
   xbreaks=c(1000, 10000, 100000, 1000000)
   ybreaks=seq(90,100,1)
   
   p1 <- ggplot(data, aes(x=aveRefLen, y=scaled, color=Status) ) + geom_point(size=2) + colScale +
     scale_x_continuous(trans='log10',labels = xkb, breaks = xbreaks) +
     scale_y_continuous(breaks = ybreaks) + 
-    xlab("Segmental duplication length (bp)") + ylab("Percent sequence identity") + myTheme 
+    xlab("Segmental duplication length (kb)") + ylab("Percent sequence identity") + myTheme 
   mysave(name1, p1)
   
-  p2 <- ggplot(data, aes(x=aveRefLen, y=averagePerID, color=Status) ) + geom_density2d(size=3, aes(alpha=..level..)) + guides(alpha=F) +
+  p2 <- ggplot(data, aes(x=aveRefLen, y=averagePerID, color=Status) ) +
+    geom_density2d(size=3, aes(alpha=..level..)) + guides(alpha=F) +
     colScale +
     scale_x_continuous(trans='log10',labels = xkb, breaks = xbreaks) +
     scale_y_continuous(breaks = ybreaks) + 
-    xlab("Segmental duplication length (bp)") + ylab("Percent sequence identity") + myTheme 
+    xlab("Segmental duplication length (kb)") + ylab("Percent sequence identity") + myTheme 
   mysave(name2, p2)
   
   list(p1,p2)
@@ -561,24 +654,38 @@ green <- "#00b2b2"
 myColors = c(green, black, red)
 names(myColors) <- levels(as.factor(gw$Status))
 
-plots = ( plotSegDups(gw,"newResolvedByPoint.png" ,"newResolvedByDensity.png", myColors) )
+plots = ( plotSegDups(gw,"newResolvedByPoint.pdf" ,"newResolvedByDensity.pdf", myColors) )
 plots[1]
 plots[2]
 
-gw2 = gw[gw$Status != "new",]
-plots = ( plotSegDups(gw2,"ResolvedByPoint.png" ,"ResolvedByDensity.png", myColors) )
+gw2 = gw[gw$Status != "ABP",]
+plots = ( plotSegDups(gw2,"ResolvedByPoint.pdf" ,"ResolvedByDensity.pdf", myColors) )
 plots[1]
 plots[2]
 
 
 
+library(bedr)
+bed = gw[c("chr","start","end", "Status")]
+bed$chr = as.character.factor(bed$chr)
+is.valid.region(bed)
+merged = bedr.merge.region(bed, check.chr = FALSE)
+merged$len = merged$end - merged$start
+sum(merged$len)
 
+numres = bed[bed$Status != "unresolved", ]
+numres = bedr.merge.region(numres, check.chr = FALSE)
+numres$len = numres$end - numres$start
+sum(numres$len)
 
+unres = bed[bed$Status == "unresolved", ]
+unres = bedr.merge.region(unres, check.chr = FALSE)
+unres$len = unres$end - unres$start
+sum(unres$len)
 
+sum(numres$len) / sum(merged$len)
 
-
-
-
+1-sum(unres$len ) / sum(merged$len) 
 
 #
 # Run a random forest to detemine what partially resolved ones might actually be correct 
