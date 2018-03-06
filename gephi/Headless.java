@@ -1,3 +1,4 @@
+import java.util.*;  
 import java.awt.Color; 
 import java.io.File;
 import java.io.ByteArrayOutputStream;
@@ -35,6 +36,7 @@ import org.gephi.io.exporter.api.ExportController;
 import org.gephi.preview.api.PreviewProperty;
 import org.gephi.preview.types.EdgeColor;
 import org.gephi.graph.api.Node;
+import org.gephi.graph.api.Edge;
 import org.gephi.appearance.spi.RankingTransformer;
 import org.gephi.graph.api.Column;
 import org.gephi.appearance.api.Function;
@@ -62,9 +64,15 @@ public class Headless
 {
 
     public static void main(String[] args) {
-        System.out.println("Hello World!");
 
-         //Init a project - and therefore a workspace
+		// read in file name if provided
+		String myfile = "mi.cuts.gml";	
+		if( args.length >= 1 ){
+			myfile = args[0];
+		}	
+		System.out.println("Input file is: " + myfile);
+	
+		//Init a project - and therefore a workspace
         ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
         pc.newProject();
         Workspace workspace = pc.getCurrentWorkspace();
@@ -81,7 +89,7 @@ public class Headless
         //Import file
         Container container;
         try {
-            File file = new File("mi.cuts.gml");
+            File file = new File(myfile);
             container = importController.importFile(file);
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -89,48 +97,32 @@ public class Headless
         }
         //Append imported data to GraphAPI
         importController.process(container, new DefaultProcessor(), workspace);
-
         //See if graph is well imported
         System.out.println("Nodes: " + graph.getNodeCount());
         System.out.println("Edges: " + graph.getEdgeCount());
-        
-        /*
-        //Filter      
-        DegreeRangeFilter degreeFilter = new DegreeRangeFilter();
-        degreeFilter.init(graph);
-        degreeFilter.setRange(new Range(30, Integer.MAX_VALUE));     //Remove nodes with degree < 30
-        Query query = filterController.createQuery(degreeFilter);
-        GraphView view = filterController.filter(query);
-        graphModel.setVisibleView(view);    //Set the filter result as the visible view
-        */
-        /*
-        //See imports directed and undirected graphs
-        UndirectedGraph graphVisible = graphModel.getUndirectedGraphVisible();
-        System.out.println("Nodes: " + graphVisible.getNodeCount());
-        System.out.println("Edges: " + graphVisible.getEdgeCount());
-        //See visible graph stats
-        DirectedGraph graphDi = graphModel.getDirectedGraphVisible();
-        System.out.println("Nodes: " + graphDi.getNodeCount());
-        System.out.println("Edges: " + graphDi.getEdgeCount());
-        */ 
-        
-        
-        /*
-        //Run YifanHuLayout for 100 passes - The layout always takes the current visible view
-        YifanHuLayout layout = new YifanHuLayout(null, new StepDisplacement(1f));
-        layout.setGraphModel(graphModel);
-        layout.resetPropertiesValues();
-        layout.setOptimalDistance(200f);
-        layout.initAlgo();
-        */
+		 
+
+		// Temperaroly filer out edges that are repulsion edges
+		// repulsions edges are marked by "color 1" as opposed to "color 0"		
+		ArrayList<Edge> negativeEdges = new ArrayList<Edge>();  
+		for (Edge e : graph.getEdges().toArray() ) {
+			int color = (int) (long) e.getAttribute("color");
+			if(color == 1){
+				negativeEdges.add(e);
+				graph.removeEdge(e);
+			}
+		} 
 		
-		// run FR at low gravity to get well sperated clusters
+		
+		// run layout algos 
+		int its = 100;	
+		// run FA at low gravity to get well sperated clusters
         ForceAtlas2 layout = new ForceAtlas2(null);
 		layout.setGraphModel(graphModel);
         layout.resetPropertiesValues();
         layout.initAlgo();
         System.out.println("Running Layout Algorithum: Force Atlas2");
-        for (int i = 0; i < 100*100 && layout.canAlgo(); i++) {
+        for (int i = 0; i < its && layout.canAlgo(); i++) {
             layout.goAlgo();
         }
         layout.endAlgo();
@@ -141,18 +133,13 @@ public class Headless
         layout2.resetPropertiesValues();
         layout2.initAlgo();
         System.out.println("Running Layout Algorithum: FruchtermanReingold");
-        for (int i = 0; i < 100*100 && layout2.canAlgo(); i++) {
+        for (int i = 0; i < its*100 && layout2.canAlgo(); i++) {
             layout2.goAlgo();
         }
-        layout2.endAlgo();
-
-
-
-
-
-        System.out.println("Done Running Layout Algorithum");
-
-
+		layout2.endAlgo();
+		System.out.println("Done Running Layout Algorithum");
+ 
+		
         // add CCID column
         Column ccCol = graphModel.getNodeTable().addColumn("CCID", Integer.class);
         for (Node n : graph.getNodes()) {
@@ -160,19 +147,18 @@ public class Headless
             int i_color = d_color.intValue();
             n.setAttribute(ccCol, i_color);
         }
+		int maxPos = 0;
+		int minPos = 99999999;
+		for (Node n : graph.getNodes()) {
+				int pos =  Integer.parseInt((String)n.getAttribute("pos"));
 
-				int maxPos = 0;
-				int minPos = 99999999;
-				for (Node n : graph.getNodes()) {
-						int pos =  Integer.parseInt((String)n.getAttribute("pos"));
-
-						if (pos > maxPos) {
-								maxPos = pos;
-						}
-						if (pos < minPos) {
-								minPos = pos;
-						}
+				if (pos > maxPos) {
+						maxPos = pos;
 				}
+				if (pos < minPos) {
+						minPos = pos;
+				}
+		}
 				
 				
         //List node columns
@@ -219,20 +205,6 @@ public class Headless
         degreeTransformer.setMaxSize(40);
         ac.transform(degreeRanking); 
         
-        /* 
-        //Get Centrality
-        GraphDistance distance = new GraphDistance();
-        distance.setDirected(true);
-        distance.execute(graphModel);
-        //Rank size by centrality
-        Column centralityColumn = graphModel.getNodeTable().getColumn(GraphDistance.BETWEENNESS);
-        Function centralityRanking = am.getNodeFunction(graph, centralityColumn, RankingNodeSizeTransformer.class);
-        RankingNodeSizeTransformer centralityTransformer = (RankingNodeSizeTransformer) centralityRanking.getTransformer();
-        centralityTransformer.setMinSize(20);
-        centralityTransformer.setMaxSize(50);
-        ac.transform(centralityRanking);
-        */
-
         // change the node labels 
         for(Node n : graph.getNodes()) {
             int i_color = (Integer) n.getAttribute("CCID");
@@ -240,14 +212,7 @@ public class Headless
             n.setLabel( s_color  );
         }
 
-        //Rank label size - set a multiplier size
-        /* does not seem to work for me
-        Function centralityRanking2 = am.getNodeFunction(graph, centralityColumn, RankingLabelSizeTransformer.class);
-        RankingLabelSizeTransformer labelSizeTransformer = (RankingLabelSizeTransformer) centralityRanking2.getTransformer();
-        labelSizeTransformer.setMinSize(5);
-        labelSizeTransformer.setMaxSize(20);
-        ac.transform(centralityRanking2);
-        */
+
 
         //Preview
         PreviewModel previewModel = Lookup.getDefault().lookup(PreviewController.class).getModel();
@@ -255,7 +220,7 @@ public class Headless
         //previewModel.getProperties().putValue(PreviewProperty.NODE_LABEL_PROPORTIONAL_SIZE, Boolean.FALSE);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_FONT, model.getProperties().getFontValue(PreviewProperty.NODE_LABEL_FONT).deriveFont(8));
 
-        model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new EdgeColor(Color.GRAY));
+        //model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new EdgeColor(Color.GRAY));
         model.getProperties().putValue(PreviewProperty.EDGE_THICKNESS, new Float(0.01f));
         // for some reaosn the next line make it so it takes longer of the pdf to laod in default ubunut 
         // but it does not really change the files ize
@@ -263,75 +228,128 @@ public class Headless
         model.getProperties().putValue(PreviewProperty.NODE_PER_NODE_OPACITY, true );				
         
         
-        //Export
+		//Export
+		ExportController ec = Lookup.getDefault().lookup(ExportController.class);
+		try {
+			ec.exportFile(new File(myfile + ".pdf"));
+			System.out.println("Export Happened");
+		} catch (IOException ex) {
+			ex.printStackTrace();
+			return;
+		}
+		
+		// export gml, these have positions for x,y for the nodes
+		// graph re-add negative edges
+		for (Edge e : negativeEdges ) {
+			graph.addEdge(e);
+		}
+		ExportController ec2 = Lookup.getDefault().lookup(ExportController.class);
+		ExporterGML gml = (ExporterGML) ec2.getExporter(".gml");
+		try {
+			ec2.exportFile(new File("cc.positions.gml"), gml);
+			System.out.println("Export of gml Happened");
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
+
 	
-        ExportController ec = Lookup.getDefault().lookup(ExportController.class);
-				try {
-            ec.exportFile(new File("mi.cuts.gml.pdf"));
-            System.out.println("Export Happened");
-						
-        } catch (IOException ex) {
-            ex.printStackTrace();
-            return;
-				}
-				/*				
-        PDFExporter pdfExporter = (PDFExporter) ec.getExporter("pdf");
-				try {
-						java.io.FileOutputStream pdfos = new java.io.FileOutputStream("mi.cuts.gml.pdf");
-						pdfExporter.setOutputStream(pdfos);
-						pdfExporter.execute();				
-				}
-				catch (java.io.FileNotFoundException e) {
-				}
-				//Export full graph, save it to test.png and show it in an image frame
-        //ec.exportFile(new File("mi.cuts.gml.png"));
-        PNGExporter exporter = (PNGExporter) ec.getExporter("png");
-				try {
-						java.io.FileOutputStream fos = new java.io.FileOutputStream("mi.cuts.gml.png");
-						exporter.setOutputStream(fos);
-						exporter.execute();
-				}
-				catch (java.io.FileNotFoundException e) {
-				}
-				*/
-				//        ec.exportStream(baos, exporter);
-				//        byte[] png = baos.toByteArray();
+	//	
+	// PLOT ONLY NEGATIVE EDGES
+	//
+	
+		// remove positve edges
+		for (Edge e : graph.getEdges().toArray() ) {
+			graph.removeEdge(e);
+		}
+		// no edges plot
+		ExportController ecnone = Lookup.getDefault().lookup(ExportController.class);
+		try {
+			ecnone.exportFile(new File( "extraCCplots/" + myfile + ".noEdges.pdf"));
+			System.out.println("Export Happened of just nodes happened");
+		} catch (IOException ex) {
+			ex.printStackTrace();
+			return;
+		}   	
+		// graph re-add negative edges
+		for (Edge e : negativeEdges ) {
+			graph.addEdge(e);
+		}
+		// negative edges
+		ExportController ec3 = Lookup.getDefault().lookup(ExportController.class);
+		try {
+			ec3.exportFile(new File( "extraCCplots/" + myfile + ".negative.pdf"));
+			System.out.println("Export Happened of negative edges happened");
+		} catch (IOException ex) {
+			ex.printStackTrace();
+			return;
+		}   
 
-				//        pdfExporter.setPageSize(PageSize.A0);
-				//        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-				//        ec.exportStream(baos, pdfExporter);
-				
-        //Export
-        /*
-        ExportController ec2 = Lookup.getDefault().lookup(ExportController.class);
-        try {
-            ec2.exportFile(new File("mi.cuts.gml.jpg"));
-            System.out.println("Export Happened");
-        } catch (IOException ex2) {
-            ex2.printStackTrace();
-            return;
-        }*/
-        /*
-        //PDF Exporter config and export to Byte array
-        PDFExporter pdfExporter = (PDFExporter) ec.getExporter("pdf");
-        pdfExporter.setPageSize(PageSize.A0);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ec.exportStream(baos, pdfExporter);
-        byte[] pdf = baos.toByteArray();
-        */
-    
-	ExportController ec2 = Lookup.getDefault().lookup(ExportController.class);
-	ExporterGML gml = (ExporterGML) ec2.getExporter(".gml");
+		//
+		// plot negative individually for eahc gorup
+		//
+		// make every combination of neggative edges
+		Hashtable<String, ArrayList<Edge>> repEdges = new Hashtable<String, ArrayList<Edge>>();
+		for (Edge e : negativeEdges ) {
+			Node source = e.getSource();
+			Node target = e.getTarget();
+			Integer one = (Integer) source.getAttribute("CCID");
+			Integer two = (Integer) target.getAttribute("CCID");
+			String CCID1 = one.toString();
+			String CCID2 = two.toString();
+			//make CCID1 the smaller
+			if( one > two ){
+				CCID1 = two.toString();
+				CCID2 = one.toString();
+			}
 
-	try {
-		ec2.exportFile(new File("cc.positions.gml"), gml);
-	} catch (IOException ex) {
-		ex.printStackTrace();
+			if(repEdges.get(CCID1 + "_" + CCID2 ) == null ){
+				repEdges.put(CCID1 + "_" + CCID2, new ArrayList<Edge>());
+			}
+			if( repEdges.get(CCID1) == null){
+				repEdges.put(CCID1, new ArrayList<Edge>());
+			}	
+			if( repEdges.get(CCID2) == null){
+				repEdges.put(CCID2, new ArrayList<Edge>());
+			}
+			
+			repEdges.get(CCID1).add(e);
+			repEdges.get(CCID2).add(e);
+			repEdges.get(CCID1 + "_" + CCID2).add(e);
+			
+			if(CCID1 == CCID2){
+				System.out.println("Same:" + CCID1);
+			}
+		}
+		
+		// export every combhination of negative edges	
+		Set<String> keys = repEdges.keySet();
+		for(String CCID: keys){
+			// remove edges from last iterations
+			for (Edge e : graph.getEdges().toArray() ) {
+				graph.removeEdge(e);
+			}
+			// add current edges	
+			ArrayList<Edge> curEdges = repEdges.get(CCID);
+			Integer numNeg = curEdges.size();
+			for (Edge e : curEdges ) {
+				graph.addEdge(e);
+			}
+			
+			// export subset of graph
+			ExportController ecPart = Lookup.getDefault().lookup(ExportController.class);
+			try {
+				ecPart.exportFile(new File("extraCCplots/" + myfile + ".negative." + CCID.toString() + ".NumNegE." + numNeg.toString()+".pdf"));
+				System.out.println("Export Happened of negative edges happened");
+			} catch (IOException ex) {
+				ex.printStackTrace();
+				return;
+			}   
+		}
+
+
+
+
 	}
-
-
-	}
-
 }
 
 

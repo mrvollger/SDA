@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 library(ggplot2)
 library(scales)
 library(RColorBrewer)
@@ -6,10 +8,34 @@ library(gridExtra)
 library(ggrepel)
 library(grid)
 library(gtable)
+#install.packages("svglite")
+suppressPackageStartupMessages(library("argparse"))
+
+
+genome = "Mitchell_CHM1_V2"
+
+asmdir = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/", genome)
+refdir = "~/Desktop/work/assemblies/hg38/"
+plotsdir = sprintf( "~/Desktop/data/genomeWide/%s/plots/", genome)
+if( ! dir.exists(plotsdir)){
+  dir.create(plotsdir)
+}
+
+# create parser object
+parser <- ArgumentParser()
+parser$add_argument("-r", "--refdir", default=refdir, help="Input tsv file")
+parser$add_argument("-a", "--asmdir", default=asmdir, help="destination folder")
+parser$add_argument("-p", "--plotsdir", default=plotsdir, help=" list of unresolved seg dups")
+args <- parser$parse_args()
+
+refdir = args$refdir
+asmdir = args$asmdir 
+segdir = args$segdir
+plotsdir = args$plotsdir
 
 
 
-file = "~/Desktop/data/genomeWide/Mitchell_CHM1/LocalAssemblies/betterBlasrMap/careAboutGenes.txt"
+file = paste0(refdir, "careAboutGenes.txt")
 importantGenes = read.table(file, header=F)
 #importantGenes = c("NPIPA5", "CYP4F", "GOLGA8", "GTF2H2", "DEFA5", "HERC2P3", "CXADPR2", "ZNF705G", "BOLA2")
 geneRegex = paste(importantGenes$V1, collapse = '|')
@@ -28,7 +54,7 @@ mysave <- function(name, p){
   ggsave(name, plot = p,  width = w, height = h, units = "cm")
 }
 
-file = "~/Desktop/data/genomeWide/Mitchell_CHM1/LocalAssemblies/betterBlasrMap/clonemapped.pd"
+file = paste0(asmdir, "betterBlasrMap/clonemapped.pd")
 mapped = read.table(file, header=T)
 
 mapped$clonePerID = mapped$perID_by_matches 
@@ -61,7 +87,7 @@ plots[[3]] = ggplot(mapped) + geom_point(aes(referencePerID, clonePerID, color =
   
 
 validated = mapped[mapped$validated,]
-file2 = "~/Desktop/data/genomeWide/Mitchell_CHM1/LocalAssemblies/betterBlasrMap/validated.genes.bed"
+file2 = paste0(asmdir, "betterBlasrMap/validated.genes.bed")
 genes = read.table(file2, header=F)
 genes = genes[, c("V4", "V7")]
 colnames(genes) = c("query_name", "Gene")
@@ -112,8 +138,8 @@ for(i in 1:length(plots)){
     scale_x_continuous(labels = comma) + 
     scale_color_manual(values=col2) +
     theme(plot.margin=unit(c(1,1,1,1),"cm"))
-  fname = paste0("~/Desktop/Public/Mitchell_CHM1/diverged/", paste0(i, ".all.pdf"))
-  mysave(fname, plots[[i]])
+  fname = paste0(plotsdir, paste0(i, ".all.pdf"))
+  #mysave(fname, plots[[i]])
 }
 
 
@@ -123,7 +149,7 @@ names(show) <- c("Label", "Gene(s)", "% ID")
 # Set theme to allow for plotmath expressions
 
 mycolors = c( rep("#FFFFFF", maxShownGenes), rep("#e9e9e9", counter - maxShownGenes))
-tsize = 0.3
+tsize = 0.4
 tt <- gridExtra::ttheme_minimal(
     core = list(fg_params=list(cex = tsize, parse=T), 
                 bg_params = list(fill=mycolors  )),
@@ -154,11 +180,13 @@ tbl <- gtable_add_grob(tbl,
 # Plot chart and table into one object
 x = grid.arrange(plots[[4]], tbl,
              ncol=2, 
-             widths = c(4,1),
+             widths = c(5,2),
              padding=unit(1, "cm")) 
 
 
-mysave("~/Desktop/Public/Mitchell_CHM1/diverged/final.pdf", x)
+mysave(paste0(plotsdir, "cloneVerifiedWithGenes.svg"), x)
+mysave(paste0(plotsdir, "cloneVerifiedWithGenes.pdf"), x)
+
 
 dim(validated)
 

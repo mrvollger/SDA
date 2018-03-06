@@ -11,7 +11,7 @@ shell.executable("/bin/bash")
 shell.prefix("source %s/env_PSV.cfg; set -eo pipefail" % SNAKEMAKE_DIR)
 #shell.suffix("2> /dev/null")
 
-blasr= '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
+#blasr= '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
 blasrDir= '~mchaisso/projects/blasr-repo/blasr'
 scriptsDir= '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
 #base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
@@ -24,8 +24,12 @@ CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
 #CANU_DIR="/net/eichler/vol2/home/mvollger/projects/builds/canu/Linux-amd64/bin"
 
 configfile:
-	"coverage.json"	
-	
+	"abp.config.json"	
+blasr = config["blasr"]
+# min cov is used to detemrine the filter for getting rid of low read assemblies. 
+MINREADS = int(config["MINCOV"]*1.0/2.0)
+
+
 groups= glob.glob("group.[0-9]*.vcf")
 IDS= []
 for group in groups:
@@ -227,11 +231,17 @@ rule runAssembly:
 		rm -rf group.{wildcards.n}/{wildcards.prefix}.assembly/*
 
         if [ -s {input} ]; then
-            module load java/8u25 && {CANU_DIR}/canu -pacbio-raw {input} genomeSize=60000 \
+            module load java/8u25 && {CANU_DIR}/canu -pacbio-raw {input} \
+				genomeSize=60000 \
+				corOutCoverage=300 \
+				corMhapSensitivity=high \
+				corMinCoverage=1 \
+				gnuplotTested=true  \
+		        -p asm useGrid=false  \
                 -d group.{wildcards.n}/{wildcards.prefix}.assembly \
-		        -p asm useGrid=false  gnuplotTested=true  corMhapSensitivity=high corMinCoverage=1 \
 		        maxThreads={threads} cnsThreads={threads} ovlThreads={threads} \
-		        mhapThreads={threads} contigFilter="2 1000 1.0 1.0 2" \
+		        mhapThreads={threads} \
+				contigFilter="{MINREADS} 1000 1.0 1.0 2" \
                 || ( >&2 echo " no real assembly" && \
                 mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly && \
                 > {output} )
@@ -337,7 +347,7 @@ rule bamFromAssembly:
             > {output.asmbas}
         else 
             ~mchaisso/projects/blasr-repo/blasr/pbihdfutils/bin/samtobas {input.H2} {output.asmbas} -defaultToP6
-	        ~mchaisso/projects/blasr-repo/blasr/alignment/bin/blasr {output.asmbas} {input.asm} \
+			{blasr} {output.asmbas} {input.asm} \
                 -clipping subread -sam -bestn 1 -out /dev/stdout  -nproc {threads} \
                 | samtools view -bS - | samtools sort -m 4G -T tmp -o {output.asmbam}
 	        
@@ -649,12 +659,12 @@ if(useBlasr):
 		threads: 8
 		shell:
 			"""
-			blasr -nproc {threads} -sam -clipping soft -out /dev/stdout \
+			{blasr} -nproc {threads} -sam -clipping soft -out /dev/stdout \
 				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
 				{input.asmWH} {input.ref} | \
 				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.refsam}
 			
-			blasr -nproc {threads} -sam -clipping soft -out /dev/stdout \
+			{blasr} -nproc {threads} -sam -clipping soft -out /dev/stdout \
 				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
 				{input.asmWH} {input.dup} | \
 				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
@@ -911,8 +921,8 @@ if(os.path.exists("real.fasta")):
 			sam="real.sam",
 		shell:
 			"""
-			blasr -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
-			blasr -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
+			{blasr} -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
+			{blasr} -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
 			"""
 
 

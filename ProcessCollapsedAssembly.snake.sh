@@ -3,13 +3,13 @@ module purge
 . /etc/profile.d/modules.sh
 module load modules modules-init modules-gs/prod modules-eichler
 export PATH=/net/eichler/vol2/home/mvollger/projects/builds/anaconda/anaconda3/bin:$PATH
-set -x
 
 #
 # snakemake paramenters
 #
-snakefile=/net/eichler/vol2/home/mvollger/projects/abp/ProcessCollapsedAssembly.py
-jobNum=200
+DIR=$(cd `dirname $0` && pwd)
+snakefile=$DIR/ProcessCollapsedAssembly.py
+jobNum=100
 waitTime=60 # this really needs to be 60 on our cluster :(
 retry=1 # numer of times to retry the pipeline if it failes
 # I allow a retry becuase sometimes even the really long waittime is not enough,
@@ -40,7 +40,7 @@ snakemake -p \
 		-S /bin/bash" \
 	--jobs $jobNum \
 	--latency-wait $waitTime \
-	--restart-times $retry 
+	--restart-times $retry  \
+	$1 $2 # just a way to pass aditional arguments to snakemake, like --unlock 
 
 
-#--dryrun \

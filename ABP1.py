@@ -14,8 +14,7 @@ Dependencies: should be taken care of by loading the env_PSV.cfg file
 Requires a file called reads.orig.bam, ref.fasta should also be there, and it will take advantage 
 of duplications.fasta, if it is there, also a config file called coverage.json
 """
-
-blas = '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
+# now in the config file
 blasrDir = '~mchaisso/projects/blasr-repo/blasr'
 scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
 #scriptsDir = '~mvollger/projects/abp_repo/abp/abp'
@@ -27,10 +26,13 @@ utils="/net/eichler/vol2/home/mvollger/projects/utility"
 pitchfork="source /net/eichler/vol2/home/mvollger/projects/builds/pitchfork/setup_pitchfork.sh && "
 
 
+
+
 #settings
-if(os.path.exists("coverage.json")):
+configFile = "abp.config.json"
+if(os.path.exists(configFile)):
 	configfile:
-		"coverage.json"	
+		configFile	
 	MINCOV=config["MINCOV"]
 	MAXCOV=config["MAXCOV"]
 	MINTOTAL=config["MINTOTAL"]
@@ -45,9 +47,12 @@ if(os.path.exists("coverage.json")):
 			mean = "dup_mean.intersect",
 			maxx = "dup_max.intersect",
 			groups=dynamic("group.{n}.vcf"),
+			itPlotDone="iteration.plots.done",
 		message: 'Running the frist half of ABP'
-
+	# need to say which blasr to use 
+	blasr = config["blasr"]
 else:
+	blasr = '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
 	MINCOV = int(os.environ.get("MINCOV", "30"))	
 	MAXCOV = int(os.environ.get("MAXCOV", "50"))
 	# only consider collapsed sites
@@ -68,31 +73,32 @@ print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 #
 minaln="500"
 if(os.path.exists("reads.orig.bam")):
-    rule preprocess_reads:
-        input:
-            'reads.orig.bam'
-        output:
-            'reads.bas.h5'
-        shell:
-            'samtools view -h {input} | {blasrDir}/pbihdfutils/bin/samtobas /dev/stdin {output}'
+	rule preprocess_reads:
+		input:
+			'reads.orig.bam'
+		output:
+			'reads.bas.h5'
+		shell:
+			'samtools view -h {input} | {blasrDir}/pbihdfutils/bin/samtobas /dev/stdin {output}'
 
-    rule realign_reads:
-        input:
-            basreads='reads.bas.h5', 
-            ref='ref.fasta'
-        output:
-            "reads.bam"
-        threads: 8
-        shell: 
-            """
+	rule realign_reads:
+		input:
+			basreads='reads.bas.h5', 
+			ref='ref.fasta'
+		output:
+			"reads.bam"
+		threads:
+			8
+		shell: 
+			"""
 			{blasr}	{input.basreads} {input.ref}  \
-					-sam -preserveReadTitle -clipping subread -out /dev/stdout \
-					-nproc {threads} -bestn 1 \
-                    -mismatch 3 -insertion 9 -deletion 9 \
-                    -minAlignLength {minaln} | \
-                     samtools view -bS -F 4 - | \
-                     samtools sort -m 4G -T tmp -o {output}
-            """
+				-sam -preserveReadTitle -clipping subread -out /dev/stdout \
+				-nproc {threads} -bestn 1 \
+				-mismatch 3 -insertion 9 -deletion 9 \
+				-minAlignLength {minaln} | \
+				 samtools view -bS -F 4 - | \
+				 samtools sort -m 4G -T tmp -o {output}
+			"""
 
 elif(os.path.exists("reads.orig.fasta")):
     rule realign_reads_fasta:
@@ -261,7 +267,7 @@ rule duplicationsFasta1:
 	threads: 8
 	shell:
 		"""
-		blasr -clipping subread {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
+		{blasr} -clipping subread {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
 				-sam -bestn 30 -out {output.dupsam} -minMatch 15 -maxMatch 20
 		"""
 
@@ -313,7 +319,8 @@ rule duplicationsFasta3:
     shell:
         """
         #samtools faidx {GRCh38} `cat {input.duprgn}` > {output.dup}
-        bedtools getfasta -fi {GRCh38} -bed {input.duplong} > {output.dup} 
+		# the awk part removes duplicate entires in duplicaitons.fasta
+        bedtools getfasta -fi {GRCh38} -bed {input.duplong} | awk '!a[$0]++' >  {output.dup} 
         """
 
 rule depthOnDuplications:
@@ -435,12 +442,28 @@ rule createPSVgraph:
 		matrix="assembly.consensus.fragments.snv.mat.categorized",
 		vcf="assembly.consensus.nucfreq.vcf"
 	output:
-	        graph="mi.gml",
-                adj="mi.adj"
+		graph="mi.gml",
+		adj="mi.adj",
+		mi="mi.mi",
 	shell:
-		'{scriptsDir}/PairedSNVs.py {input.matrix} --minCov {MINCOV} --maxCov {MAXCOV} --graph {output.graph} --adj {output.adj} --minNShared 5 --minLRT 1.5 --vcf {input.vcf}'			
+		"""
+		{scriptsDir}/PairedSNVs.py {input.matrix} --minCov {MINCOV} --maxCov {MAXCOV} \
+				--mi {output.mi} --graph {output.graph} --adj {output.adj} \
+				--minNShared 5 --minLRT 1.5 --vcf {input.vcf}
+		"""
 
 
+runIters = True
+runIters = False
+posFile = "mi.gml"
+if(runIters and os.path.exists(posFile)):
+	print("Going to export iterations of CC for debugging")
+	#showIters = " --exportEachIteration --layout {} ".format(posFile)	
+	showIters = " --exportEachIteration "
+	convert = "convert extraCCplots/iteration.*.png all_cc_iterations.pdf"
+else:
+	showIters = ""
+	convert = ""
 #
 # Run correlation clustering to try and spearate out the graph.  Swap
 # is a 'simulated annealing' type parameters. The factor parameter
@@ -456,8 +479,15 @@ rule correlationClustering:
 		cuts="mi.gml.cuts"
 	shell:
 		"""	
-		{scriptsDir}/MinDisagreeClusterByComponent.py  --niter 1000 --swap 10000 --factor 2\
-				--graph {input.graph} --cuts {output.cuts} --sites {output.sites} --out {output.out}
+		mkdir -p extraCCplots
+		{scriptsDir}/MinDisagreeClusterByComponent.py  \
+				--graph {input.graph} \
+				--niter 1000 --swap 10000 --factor 2 \
+				--plotRepulsion {showIters} \
+				--cuts {output.cuts} --sites {output.sites} --out {output.out}
+		
+		# it running all iteraitons convert them into a booklet
+		{convert}
 
 		for x in $(cat mi.gml.sites); do echo $x; done | sort | uniq -d > notUnique.sites
 		"""
@@ -500,9 +530,41 @@ rule gephi:
 	output:
 		pdf='mi.cuts.gml.pdf',
 	run:
-		shell( base2 + "/gephi/gephi.sh" )
+		shell(base2 + "/gephi/gephi.sh" )
 		collapse = os.path.basename(os.getcwd()) + ".pdf"
 		shell("cp " + output["pdf"] + " " + collapse)
+
+
+#
+#
+# The --exportEachIteration flag in creates gml files at every iteration with the form 
+# iterations.{component index}.{iteration index}.gml. I want to plot them all with gephi.
+# that is the purpose of this rule
+#
+if(False):
+	rule IterationGephi:
+		input:
+			ccdone="mi.cuts.gml",
+			pdfdone='mi.cuts.gml.pdf',
+		output:
+			itPlotDone="iteration.plots.done",
+		run:
+			for gml in sorted(glob.glob("iteration.*.*.gml")):
+				print(gml)
+				shell( base2 + "/gephi/gephi.sh " + gml )
+			shell("touch {output.itPlotDone}")
+else:
+	rule NoIterationGephi:
+		input:
+			ccdone="mi.cuts.gml",
+			pdfdone='mi.cuts.gml.pdf',
+		output:
+			itPlotDone="iteration.plots.done",
+		run:
+			shell("touch {output.itPlotDone}")
+
+
+
 
 
 #

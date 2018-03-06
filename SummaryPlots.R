@@ -2,6 +2,7 @@
 #lib="/home/mrvollger/anaconda3/lib/R/library"
 #.libPaths(lib)
 #.libPaths( c( .libPaths(), lib ))
+library(Cairo) 
 library(ggplot2)
 library(plyr)
 require(gridExtra)
@@ -14,27 +15,27 @@ library(dplyr)
 library(splitstackshape)
 library(stringr)
 library(data.table)
-library(networkD3)
+#library(networkD3)
 library(bedr)
-library(Cairo)
 library(evaluate)
-library(extrafont)
-font_import()
-
 suppressPackageStartupMessages(library("argparse"))
+
 # create defualt files to run
 genome = "Mitchell_CHM13_V2"
 genome = "Yoruban"
 genome = "Mitchell_CHM1"
+# this is the one with jason chins assembly
+genome = "Mitchell_CHM1_V2"
 
 
+faifile = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/all.ref.fasta.fai", genome)
 res <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.mean.resolved", genome) )[1]
 unr <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.mean.unresolved", genome) )[1]
-res <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.fasta.resolved", genome) )[1]
-unr <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.fasta.unresolved", genome) )[1]
+res <- Sys.glob(sprintf("~/Desktop/work/assemblies/CHM1/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015/Segdups/asm.resolved", genome) )[1]
+unr <- Sys.glob(sprintf("~/Desktop/work/assemblies/CHM1/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015/Segdups/asm.unresolved", genome) )[1]
 #euch <- Sys.glob(sprintf("~/Desktop/data/genomeWide/Mitchell_CHM1/LocalAssemblies/euchromatic.hg38.bed", genome) )[1]
 tsv = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/localAssemblyStats.tsv", genome)
-des = sprintf("~/Desktop/Public/%s/", genome)
+des = sprintf("~/Desktop/data/genomeWide/%s/plots/", genome)
 # create parser object
 parser <- ArgumentParser()
 parser$add_argument("-t", "--tsv", default=tsv, help="Input tsv file")
@@ -43,6 +44,11 @@ parser$add_argument("-r", "--resolved", default=res, help="list of resolved seg 
 parser$add_argument("-u", "--unresolved", default=unr, help=" list of unresolved seg dups")
 args <- parser$parse_args()
 args
+
+if( ! dir.exists(args$dest)){
+  dir.create(args$dest)
+}
+
 
 #
 # set up ggplot theme
@@ -126,6 +132,10 @@ readIn <- function(filename, name){
   df$start=as.numeric(df$start)
   df$end=as.numeric(df$end)
   df$aveRefLen=df$end-df$start
+  # must adjust to be between zero and 100
+  if( max(df$averagePerID <= 1.0) ){
+    df$averagePerID = df$averagePerID * 100
+  }
   df$averagePerID[df$averagePerID >= 100.0] = 99.999999
   df$Status=rep(name, length(df$aveRefLen))
   return(df)
@@ -289,27 +299,20 @@ value=c()
     
     
 links = data.frame(source, target, value)
-library(rbokeh)
-sn = sankeyNetwork(Links = links, Nodes = nodes,
-              Source = "source", Target = "target", NodeID = "name", Value="value",
-              fontSize= 12, nodeWidth = 30)
-sn
-widget2png(sn, "~/Desktop/sankey.png")
 
 
 
-URL <- paste0(
-  "https://cdn.rawgit.com/christophergandrud/networkD3/",
-  "master/JSONdata/energy.json")
-Energy <- jsonlite::fromJSON(URL)
-sankeyNetwork(Links = Energy$links, Nodes = Energy$nodes, Source = "source",
-              Target = "target", Value = "value", NodeID = "name",
-              units = "TWh", fontSize = 12, nodeWidth = 30)
-
-Energy$links
-
-
-
+#
+# density of reference assembly length 
+#
+fai = read.table(faifile)
+names(fai) = c("Collapse","Collapse Length","b","a")
+fai[["Collapse Length"]][ fai[["Collapse Length"]] > 150000 ] = 150000
+p8 = ggplot(fai, aes(x=fai[["Collapse Length"]] )) + geom_histogram(alpha=0.8, fill="black", binwidth=3000)  + scale_fill_manual(values=col4) +
+  scale_x_continuous(labels = comma, breaks = seq(0, 150000, by = 25000) ) +
+  xlab("Collapse length (bp)") + ylab("Counts")+ myTheme
+p8
+mysave("CollapseLength.pdf", p8)
 
 
 #
@@ -405,7 +408,7 @@ mysave("assemblyLength.pdf",p8)
 #
 # correlation between cc number and number in reference 
 #
-corr = round(cor(dfu$copiesInRef, dfu$numOfCCgroups,  method = "pearson", use = "complete.obs"), 2)
+corr = round(cor(dfu$copiesInRef, dfu$numOfCCgroups), 2)
 print(corr)
 p5 <- ggplot(dfu, aes(y=copiesInRef, x=numOfCCgroups)) + 
   geom_count() + coord_fixed() + geom_abline(intercept = 0, slope = 1, color="red") + 
@@ -419,7 +422,7 @@ mysave("cc_copies.pdf", p5)
 #
 # correlation numer of failuses and number of copies 
 #
-corr = round(cor(dfu$copiesInRef, dfu$numF,  method = "pearson", use = "complete.obs"), 2)
+corr = round(cor(dfu$copiesInRef, dfu$numF), 2)
 print(corr)
 p5 <- ggplot(dfu, aes(y=copiesInRef, x=numF)) + 
   geom_count() +
@@ -430,7 +433,7 @@ mysave("failsVsCopies.pdf", p5)
 #
 # correlation numer of failuses and number of copies 
 #
-corr = round(cor(dfu$copiesInRef, dfu$numOfCCgroups,  method = "pearson", use = "complete.obs"), 2)
+corr = round(cor(dfu$copiesInRef, dfu$numOfCCgroups), 2)
 print(corr)
 p5 <- ggplot(dfu, aes(y=numOfCCgroups, x=numF)) + 
   geom_count() +
@@ -442,7 +445,7 @@ mysave("failsVsClusters.pdf", p5)
 # correlation numer of failuses and number of copies 
 #
 dfuu = dfu[ dfu$averageRefPerID > 80, ]
-corr = round(cor(dfuu$averageRefPerID, dfuu$numOfCCgroups,  method = "pearson", use = "complete.obs"), 2)
+corr = round(cor(dfuu$averageRefPerID, dfuu$numOfCCgroups), 2)
 print(corr)
 p5 <- ggplot(dfu, aes(y=averageRefPerID, x=numF)) + 
   geom_count() +
@@ -614,9 +617,11 @@ unresolved$scaled = floor(unresolved$averagePerID) + unresolved$dec
 
 temp = merge(resolved, unresolved,all=TRUE)
 gw = merge(temp, new,all=TRUE)
+dim(gw)
 gw=gw[gw$averagePerID >= 90,]
+dim(gw)
 gw=gw[gw$aveRefLen >= 1000,]
-
+dim(gw)
 summary(gw)
 
 
@@ -628,13 +633,18 @@ plotSegDups<-function(data, name1, name2, myColors){
   colScale <- scale_colour_manual(name = "Status", values = myColors)
   xkb=c("1", "10", "100", "1,000")
   xbreaks=c(1000, 10000, 100000, 1000000)
+  print(length(xbreaks))
+  print(length(xkb))
   ybreaks=seq(90,100,1)
-  
+  print("zero done")
   p1 <- ggplot(data, aes(x=aveRefLen, y=scaled, color=Status) ) + geom_point(size=2) + colScale +
     scale_x_continuous(trans='log10',labels = xkb, breaks = xbreaks) +
-    scale_y_continuous(breaks = ybreaks) + 
+    scale_y_continuous(breaks = ybreaks, labels=ybreaks) + 
     xlab("Segmental duplication length (kb)") + ylab("Percent sequence identity") + myTheme 
+  p1
   mysave(name1, p1)
+  
+  print("one done")
   
   p2 <- ggplot(data, aes(x=aveRefLen, y=averagePerID, color=Status) ) +
     geom_density2d(size=3, aes(alpha=..level..)) + guides(alpha=F) +
@@ -642,6 +652,7 @@ plotSegDups<-function(data, name1, name2, myColors){
     scale_x_continuous(trans='log10',labels = xkb, breaks = xbreaks) +
     scale_y_continuous(breaks = ybreaks) + 
     xlab("Segmental duplication length (kb)") + ylab("Percent sequence identity") + myTheme 
+  p2
   mysave(name2, p2)
   
   list(p1,p2)
@@ -659,9 +670,9 @@ plots[1]
 plots[2]
 
 gw2 = gw[gw$Status != "ABP",]
-plots = ( plotSegDups(gw2,"ResolvedByPoint.pdf" ,"ResolvedByDensity.pdf", myColors) )
-plots[1]
-plots[2]
+plots2 = ( plotSegDups(gw2,"ResolvedByPoint.pdf" ,"ResolvedByDensity.pdf", myColors) )
+plots2[1]
+plots2[2]
 
 
 
