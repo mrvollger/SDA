@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-module purge
-. /etc/profile.d/modules.sh
-module load modules modules-init modules-gs/prod modules-eichler
-export PATH=/net/eichler/vol2/home/mvollger/projects/builds/anaconda/anaconda3/bin:$PATH
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source $DIR/env_python3.cfg
 
 #
 # snakemake paramenters
 #
-DIR=$(cd `dirname $0` && pwd)
 snakefile=$DIR/ProcessCollapsedAssembly.py
 jobNum=100
 waitTime=60 # this really needs to be 60 on our cluster :(
