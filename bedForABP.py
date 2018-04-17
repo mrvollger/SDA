@@ -40,7 +40,7 @@ class BedRec:
 	def __str__(self):
 		#rtn = (13*"{}\t"+"{}").format(
 		rtn = (10*"{}\t"+"{}").format(
-				self.chr, self.start, self.end,
+				self.chr, int(self.start), int(self.end),
 				self.name, self.score, self.strand,
 				self.thickS, self.thickE, self.rgb, 
 				#self.blockCount, self.blockSizes, self.blockStart,
@@ -67,7 +67,8 @@ def getGenomeBrowserLinks(mys):
 html = "<h2>{1} collpase from {0}</h2>".format(track, collapse) 
 summary = open("summary.txt").read()
 html += "<pre>" + summary + "</pre>"
-html += "<a href=https://eichlerlab.gs.washington.edu/help/mvollger/{}/psvGraphs/{}.pdf>PSVgraph</a>".format(track, collapse)
+html += "<a href=https://eichlerlab.gs.washington.edu/help/mvollger/{}/psvGraphs/{}.pdf>PSVgraph</a><br>".format(track, collapse)
+html += "<a href=https://eichlerlab.gs.washington.edu/help/mvollger/{}/psvGraphs/{}.png>CoverageGraph</a><br>".format(track, collapse)
 html = string.replace(html, "\n", "<br>")
 html = string.replace(html, "\t", " ")
 html = getGenomeBrowserLinks(html)
@@ -127,7 +128,7 @@ for index, row in df.iterrows():
 		rgb = "0,200,0"
 	elif(perID >= grey):
 		# covert perID to a fraction that I can multiply to get different levels of grey 
-		frac = 100 - (perID-grey)/(99.8-grey)
+		frac = min( 100 - (perID-grey)/(99.8-grey), 1.0)
 		value = int( 192*frac )
 		rgb="{},{},{}".format(value, value, value)
 	elif(perID >= 95.0):
@@ -136,7 +137,8 @@ for index, row in df.iterrows():
 	else:
 		rgb="255,255,0"
 
-	B = BedRec(chr=chr, start=realStart, end=realEnd, name=collapse, strand=strand, rgb=rgb, ID=contig, details=html)
+	B = BedRec(chr=chr, start=int(realStart), end=int(realEnd),
+			name=collapse, strand=strand, rgb=rgb, ID=contig, details=html)
 	rtn += str(B) + "\n"
 
 
@@ -149,6 +151,7 @@ f.close()
 
 # write new bed file
 os.system("cp asm.bed " + collapse + ".bedDetail")
+os.system("cp Coverage.png " + collapse + ".png")
 
 # write track hub
 trackDB="""track {1}

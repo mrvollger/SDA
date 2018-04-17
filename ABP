@@ -23,7 +23,7 @@ rm -f PSV1_done PSV2_done
 
 # sometimes snakemake fails in a really bad way and it leaves to lock on the dir
 # this is probably bad practive but oh well
-if [ "xunlock" == "unlock" ]; then
+if [ "unlock" == "unlock" ]; then
     snakemake --unlock -s $base2/ABP1.py
     snakemake --unlock -s $base2/ABP2.py
 fi

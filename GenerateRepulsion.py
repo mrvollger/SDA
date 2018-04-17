@@ -2,9 +2,12 @@
 import argparse
 
 parser = argparse.ArgumentParser(description="")
-parser.add_argument("--mi", help="this shoudl be mi.mi, this is the mutual information between all pairs", default=None )
-parser.add_argument("--gml", help="mi.gml, these are the things that actually turned into positive edges", default="" )
+parser.add_argument("--mi", help="this shoudl be mi.mi, this is the mutual information between all pairs", default="mi.mi" )
+parser.add_argument("--gml", help="mi.gml, these are the things that actually turned into positive edges", default="mi.gml" )
 parser.add_argument("--max", help="maximum number of shared read to be considered a repulsion edge", default=1 , type=int)
+parser.add_argument("--out", help="repulsion edges", default="mi.repulsion")
+parser.add_argument("--shared", help="this is the min number of shared for positive edge", default=5 , type=int)
+parser.add_argument("--lrt", help="this and shared are not used to calcaulate possible repulsion edges, but edges that would have been repulsion edges without this script", default=1.5 , type=float)
 parser.add_argument('-d', action="store_true", default=False)
 args = parser.parse_args()
 DEBUG=args.d
@@ -39,7 +42,9 @@ for n in g.nodes():
 
 def possibleRepulsion(i, j):
 	rtn = True
-	if(i not in compByPos ):
+	if(i == j):
+		return(False)
+	elif(i not in compByPos ):
 		return(False)
 	elif(j not in compByPos ):
 		return(False)
@@ -53,6 +58,8 @@ def possibleRepulsion(i, j):
 
 # read though mi.mi
 mi = open(args.mi)
+repulsion = open(args.out, "w+")
+rep = []
 newrep = 0
 oldrep = 1
 for line in mi:
@@ -62,7 +69,37 @@ for line in mi:
 	if( possibleRepulsion(i,j) ):
 		if(shared <= args.max):
 			newrep += 1
-		if( shared <= 5 or lrt <= 1.5):
+			repulsion.write("{}\t{}\n".format(i,j))
+			rep.append((i,j))
+		if( shared <= args.shared or lrt <= args.lrt ):
 			oldrep += 1
+			print(lrt, ilrt, jlrt, shared)
 print(newrep, oldrep)
+
+
+if(DEBUG):
+	lines = open("mi.gml.sites").readlines()
+	cuts = {}
+	for cut, sites in enumerate(lines):
+		sites = sites.split()
+		for num in sites:
+			cuts[int(num)] = cut
+
+	out = {}
+	for i,j in rep:
+		if(i in cuts and j in cuts):
+			a = cuts[i]
+			b = cuts[j]
+			l = [a,b]
+			key = "{}_{}".format(min(l), max(l))
+			if(key not in out):
+				out[key] = 0
+			out[key] += 1
+
+
+
+	print(out)
+
+
+
 

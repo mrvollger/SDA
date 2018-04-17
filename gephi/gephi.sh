@@ -6,7 +6,7 @@ module load java_jdk/8u91
 
 javac -cp .:$base:$base/gephi-toolkit-0.9.2-all.jar $base/Headless.java 
 
-java -cp .:$base:$base/gephi-toolkit-0.9.2-all.jar Headless $1
+java -cp .:$base:$base/gephi-toolkit-0.9.2-all.jar Headless $1 $2
 
 
 

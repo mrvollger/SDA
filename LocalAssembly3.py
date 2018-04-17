@@ -33,6 +33,7 @@ class LocalAssembly:
 		self.addReads()
 		self.addCommon()
 		self.truthMatrix()
+		self.addSeqs()
 		#print(self.all.to_string(index=False))
 		self.toFile()
 	
@@ -63,8 +64,20 @@ class LocalAssembly:
 		self.totalReads = reads
 		self.all["totalReads"] = reads 
 
+	def addSeqs(self):
+		fasta = self.mydir + "WH.assemblies.fasta"
+		Seqs = SeqIO.to_dict(SeqIO.parse(fasta, "fasta"))
+		toadd = []
+		for fastaid in self.all["query_name"]:
+			if(fastaid in Seqs):
+				toadd.append(Seqs[fastaid].seq)
+			else:
+				toadd.append("NA")
+		self.all["seq"] = toadd 
+
+
 	def toFile(self):
-		fname = self.mydir + self.collapse + ".table.tsv"
+		#fname = self.mydir + self.collapse + ".table.tsv"
 		fname = self.mydir + "abp.table.tsv"
 		subset = []
 		for col in list(self.all):
@@ -75,7 +88,7 @@ class LocalAssembly:
 
 	def addPSVs(self):
 		self.numPSVs = []
-		psv = self.mydir + "mi.gml.cuts"
+		psv = self.mydir + "CC/mi.gml.cuts"
 		self.numPSVs = []
 		if(os.path.exists(psv)):
 			f = open(psv)
@@ -121,7 +134,7 @@ class LocalAssembly:
 		self.all["refRegions"] = ";".join(self.refRegions)
 
 	def truthMatrix(self):
-		tm = self.mydir + "truth.matrix"
+		tm = self.mydir + "truth/truth.matrix"
 		if( os.path.exists(tm) ):
 			tm = pd.read_table(tm, header=None, skiprows=1, sep = '\s+')
 			tm.rename(columns={0: 'CC_ID'}, inplace=True)
@@ -223,7 +236,7 @@ class LocalAssembly:
 
 	def findAsm(self):
 		asms = []
-		df = pd.read_csv(self.mydir + "WH_dup.tsv", sep = "\t")
+		df = pd.read_csv(self.mydir + "asms/WH_dup.tsv", sep = "\t")
 		self.asms = self.nameToCCid(df)
 		self.parseBestMatch()
 

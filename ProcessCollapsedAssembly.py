@@ -52,6 +52,7 @@ localrules: all,
 			combineRefFasta,
 			StartFofn,
 			GenerateBatchRunScript,
+			LocalAssembliesBed,
 			#LocalAssembliesRegions,
 			#LocalAssembliesBed,
 			#LocalAssembliesRgn,
@@ -71,7 +72,7 @@ rule all:
 		#allsam="LocalAssemblies/all.ref.fasta.sam",
 		#duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
 		#cov=dynamic("LocalAssemblies/{region}/coverage.json"),
-		#refDone="LocalAssemblies/README.txt",
+		done="LocalAssemblies/README.txt",
 		array="LocalAssemblies/RunAssembliesByArray.sh",
 
 DIRS = "benchmarks reference fofns coverage LocalAssemblies alignments" 
@@ -565,6 +566,12 @@ rule GetCoverageStats:
 		for infile, outfile in zip(input, output):
 			bed = pd.read_csv(infile, sep = "\t", header=None,
 					names=['contig', 'start', 'end',"coverage"])
+			# I want to eliminte the really low or really high coverage things because they are probably
+			# not assembled correctly and then assecess what the mean and standard deviation is
+			top = bed.coverage.quantile(.98)
+			bot = bed.coverage.quantile(.02)
+			bed = bed[ ( bed.coverage < top ) & ( bed.coverage > bot ) ]
+			
 			stats = bed["coverage"].describe()
 			out = "mean_coverage\tstd_coverage\n{}\t{}\n".format(stats["mean"], stats["std"])
 			open(outfile,"w+").write(out)
@@ -584,8 +591,10 @@ rule GenerateMinAndMax:
 		stats = pd.read_csv(input["stats"], header = 0, sep = "\t")
 		# the plust one is to make it round up
 		maxcov = int(stats.iloc[0]["mean_coverage"] )
-		mintotal=int(2.0*stats.iloc[0]["mean_coverage"] - 0.1*stats.iloc[0]["std_coverage"]+1)
-		mincov = int(stats.iloc[0]["mean_coverage"] * 0.5 - 0.1*stats.iloc[0]["std_coverage"]+1)
+		#mintotal=int(2.0*stats.iloc[0]["mean_coverage"] - 0.1*stats.iloc[0]["std_coverage"]+1)
+		mintotal=int( stats.iloc[0]["mean_coverage"] + 3*stats.iloc[0]["std_coverage"] + 1 )
+		#mincov = int(stats.iloc[0]["mean_coverage"] * 0.5 - 0.1*stats.iloc[0]["std_coverage"]+1)
+		mincov = int( stats.iloc[0]["mean_coverage"] - 3*stats.iloc[0]["std_coverage"] )
 		out = "export MINCOV={}\nexport MAXCOV={}\nexport MINTOTAL={}\n".format(mincov, maxcov, mintotal)
 		#open(output["minmax"], "w+").write(out)
 		out2 = '{{\n\t"MINCOV" : {},\n\t"MAXCOV" : {},\n\t"MINTOTAL" : {},\n'.format(mincov, maxcov, mintotal)
@@ -626,6 +635,7 @@ def NoRepeatContent(row):
 rule BedForCollapses:
 	input:
 		combined="coverage/all.repeatCounted.bed",
+		stats="coverage/all.stats.txt",
 		#json=rules.GenerateMinAndMax.output.json,
 		fai=reference + ".fai",
 	output:
@@ -638,8 +648,9 @@ rule BedForCollapses:
 				names=['contig', 'start', 'end', 'coverage', "repeatCount"])
 
 		# require high enough coverage
-		stats = bed["coverage"].describe()
-		mincov= 2.0*stats["mean"] - 0.1*stats["std"]
+		stats = pd.read_csv(input["stats"], header = 0, sep = "\t")
+		#mincov= 2.0*stats["mean_coverage"] +3*stats["std_coverage"]
+		mincov=int( stats.iloc[0]["mean_coverage"] + 3*stats.iloc[0]["std_coverage"] + 1 )
 		print(mincov)
 		bed = bed.ix[ bed["coverage"] >= mincov ]
 		
@@ -825,14 +836,17 @@ rule LocalAssembliesBed:
 		cmd = ""
 		for line, region in zip(collapses,regions):
 			line = line.split("\t")
+			tempcmd = ""
 			# for making the bed file
 			bed = "{}\t{}\t{}".format(line[0], int(float(line[1])), int(float(line[2])) )
-			cmd += "echo {} > {}/orig.bed; ".format(bed, region)
+			tempcmd += "echo {} > {}/orig.bed; ".format(bed, region)
 			# for making the regions file
 			rgn = "{}:{}-{}".format(line[0], int(float(line[1])), int(float(line[2])) )
-			cmd += "echo {} > {}/orig.rgn; ".format(rgn, region)
+			tempcmd += "echo {} > {}/orig.rgn; ".format(rgn, region)
+			cmd += tempcmd
+			shell(tempcmd)
 
-		shell(cmd)
+		#shell(cmd)
 #
 # same as above but in a different format
 # this rule requires a long latency wait time for some reason ~60 seconds 
@@ -982,12 +996,15 @@ rule duplicationsFasta1:
 	input:
 		dupref="LocalAssemblies/all.ref.fasta",
 	output:
+		dupreffai="LocalAssemblies/all.ref.fasta.fai",
 		dupsam="LocalAssemblies/all.ref.fasta.sam",
 	params:
 		blasr=config["blasr"],
 		cluster=" -pe serial 4 -l mfree=16G -l h_rt=12:00:00",
 	shell:
 		"""
+		samtools faidx {input.dupref}
+
 		# for some reason blasr (43) wokrs mcuh better for this than params.blasr (46)
 		blasr -nproc 4 -sa {sa} -sam -out /dev/stdout \
 			-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
@@ -1046,10 +1063,14 @@ rule ConvertTsvToBedAndRgn:
 			match =  re.search('(.+):(\d+)-(\d+)/.*', name)
 			if(match):
 				region = "{}.{}.{}".format(match.group(1),match.group(2),match.group(3))
+				# short bed file
 				outfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
 				group[["contig", "start", "end"]].to_csv(outfile, sep="\t", index=False, header=False)
+				shell( "sort -u {} -o {}".format(outfile, outfile) ) # remove duplicates 
+				# long bed file
 				outfile2 = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
 				group[["contig", "longstart", "longend"]].to_csv(outfile2, sep="\t", index=False, header=False)
+				shell( "sort -u {} -o {}".format(outfile2, outfile2) ) # remove duplicates 
 		shell("touch " + output["bedDone"])
 					
 #
@@ -1057,12 +1078,10 @@ rule ConvertTsvToBedAndRgn:
 #
 rule getReferenceSequences:
 	input:
-		#duplong="LocalAssemblies/{region}/ref.fasta.long.bed",
 		bedDone="LocalAssemblies/bed.done.txt",
 		regions="LocalAssemblies/regions.txt",
 	output:
-		#dup="LocalAssemblies/{region}/duplications.fasta",
-		refDone="LocalAssemblies/README.txt",
+		refDone="LocalAssemblies/DONEREF.txt",
 	params:
 		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00 ",
 	run:
@@ -1076,6 +1095,33 @@ rule getReferenceSequences:
 			if(os.path.exists(bedfile)):
 				shell(cmd)
 		shell("touch " + output["refDone"])
+
+
+
+#
+# get intersection of genes
+#
+genes = "/net/eichler/vol2/home/mvollger/assemblies/hg38/hg38.gene.locations.bed"
+rule intersectGenes:
+	input:
+		regions="LocalAssemblies/regions.txt",
+		refdone = rules.getReferenceSequences.output.refDone,
+	output:
+		mydone = "LocalAssemblies/README.txt"
+	params:
+		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00 ",
+	run:
+		regions = open(input["regions"])
+		for region in regions.readlines(): 
+			region = region.strip()[:-1]
+			bedfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
+			outgenes = "LocalAssemblies/{}/ref.fasta.genes.bed".format(region)
+			cmd = "bedtools intersect -wo -a {} -b {} | bedtools sort -i - > {} ".format(genes, bedfile, outgenes)
+			if(os.path.exists(bedfile)):
+				shell(cmd)
+		
+		shell("touch " + output["mydone"])
+
 
 
 #

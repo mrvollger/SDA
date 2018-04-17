@@ -2,7 +2,7 @@
 #lib="/home/mrvollger/anaconda3/lib/R/library"
 #.libPaths(lib)
 #.libPaths( c( .libPaths(), lib ))
-library(Cairo) 
+#library(Cairo) 
 library(ggplot2)
 library(plyr)
 require(gridExtra)
@@ -18,24 +18,31 @@ library(data.table)
 #library(networkD3)
 library(bedr)
 library(evaluate)
+library(stringdist)
 suppressPackageStartupMessages(library("argparse"))
 
 # create defualt files to run
-genome = "Mitchell_CHM13_V2"
-genome = "Yoruban"
-genome = "Mitchell_CHM1"
-# this is the one with jason chins assembly
 genome = "Mitchell_CHM1_V2"
+genome = "CHM13"
+genome = "Yoruban_feb_2018"
+genome = "Mitchell_CHM1"
 
 
-faifile = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/all.ref.fasta.fai", genome)
-res <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.mean.resolved", genome) )[1]
-unr <- Sys.glob(sprintf("~/Desktop/data/genomeWide/%s/segdups/*.mean.unresolved", genome) )[1]
-res <- Sys.glob(sprintf("~/Desktop/work/assemblies/CHM1/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015/Segdups/asm.resolved", genome) )[1]
-unr <- Sys.glob(sprintf("~/Desktop/work/assemblies/CHM1/GCA_001297185.1_PacBioCHM1_r2_GenBank_08312015/Segdups/asm.unresolved", genome) )[1]
-#euch <- Sys.glob(sprintf("~/Desktop/data/genomeWide/Mitchell_CHM1/LocalAssemblies/euchromatic.hg38.bed", genome) )[1]
+asmdirs = strsplit( Sys.glob("~/Desktop/work/assemblies/*"), "/") 
+asmdirs = unlist( lapply(asmdirs, function(x){return(x[length(x)])}) ) 
+asmdir = asmdirs[ which.min( stringdist(genome,  asmdirs, method = "lcs")  ) ]
+asmdir 
+
+# gets the closets match the the relevant segdup dir 
+segdir = Sys.glob(sprintf("~/Desktop/work/assemblies/%s/*/Segdups/", asmdir))[1]
+segdir
+res <- paste0(segdir, "asm.resolved")
+unr <- paste0(segdir, "asm.unresolved")
+
 tsv = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/localAssemblyStats.tsv", genome)
+faifile = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/all.ref.fasta.fai", genome)
 des = sprintf("~/Desktop/data/genomeWide/%s/plots/", genome)
+
 # create parser object
 parser <- ArgumentParser()
 parser$add_argument("-t", "--tsv", default=tsv, help="Input tsv file")
@@ -56,7 +63,7 @@ if( ! dir.exists(args$dest)){
 
 # define the types of resolved 
 pr =  "Diverged"
-res  = "Resolved"
+res  = "Assembled"
 failed = "Failed"
 mAsm = "Multiple Assemblies"
 theme_set(theme_gray(base_size = 24))
@@ -90,18 +97,23 @@ col2=col4[c(pr, res)]
 col2
 myColors = data.frame(Status=names(col4), color = unname(col4))
 myColors
+
+
+# list of all plots
+myplots <<- list()
+i <<- 1
 #
 # function to save plots 
 #
 mysave <- function(name, p){
+  # save to list
+  myplots[[i]] <<- p
+  i <<- i + 1
+  # write to file 
   if(args$dest != ""){
     args$dest = paste0(args$dest, "/")
     file = paste0(args$dest, name)
     ggsave(file, plot = p,  width = w, height = h, units = "cm")
-    # save as an svg as well
-    svg(paste0(file, ".svg"), width = w/2, height = h/2)
-    print(p)
-    dev.off()
   }
 }
 
@@ -156,7 +168,7 @@ segdups = rbind(resolved, unresolved)
 head(segdups)
 
 
-#
+
 # read in data 
 #
 
@@ -171,8 +183,8 @@ all = read.table(text=lines, sep ="\t", header = T, stringsAsFactors=FALSE)
 setDT(all)
 # convert to percentage vs fraciton
 all$bestPerID = all$perID_by_matches
-sum(all$Status == "Diverged")
-sum(all$Status == "Resolved")
+sum(all$Status == pr)
+sum(all$Status == res)
 
 #
 # calcualte average percent identity within the reference regions for each collapse 
@@ -217,6 +229,7 @@ all$PSVsPer1K = all$totalPSVs / all$collapseLen * 1000
 all$PSVsPerClusterPer1K = all$numPSVs / all$collapseLen * 1000
 
 all$Status[all$Status == "Partially Resolved"] = pr
+all$Status[all$Status == "Resolved"] = res
 
 # remove multiple assemblies that appear more than once. I want them overall for mapping them, but i do not want them for this summary
 dim(all)
@@ -247,59 +260,14 @@ statusCounts = data.frame(Status = c(pr, res, failed, mAsm),
 dim(df)
 statusCounts
 
+
 p0 <- ggplot(df, aes(Status, fill=Status)) + geom_bar() + 
   labs(y = "Cluster Count") +
   guides(fill=FALSE)+
   geom_text(data=statusCounts, aes(y=counts, x=Status, label=counts),vjust=-.1, size = 8) +
   scale_fill_manual(values=col4) + myTheme 
-p0
+#p0
 mysave("statusHist.pdf", p0)
-
-
-
-nodes <- data.frame(name=c(
-"Clusters",
-failed,
-"Assembled",
-mAsm,
-"Successful Assemblies",
-pr,
-res))
-nodes
-
-source=c()
-target=c()
-value=c()
-# failed
-    source = c(source, 0)
-    target = c(target, 1)
-    value=c(value, counts[failed])
-# mAsm
-    source = c(source, 0)
-    target = c(target, 2)
-    value=c(value, counts[res] + counts[pr] + counts[mAsm] )
-    
-    source = c(source, 2)
-    target = c(target, 3)
-    value=c(value, counts[mAsm])
-    
-# res
-    source = c(source, 2)
-    target = c(target, 4)
-    value=c(value, counts[res] + counts[pr] )
-    
-    source = c(source, 4)
-    target = c(target, 6)
-    value=c(value, counts[res])
-    
-# diverged
-    source = c(source, 4)
-    target = c(target, 5)
-    value=c(value, counts[pr])
-    
-    
-links = data.frame(source, target, value)
-
 
 
 #
@@ -307,12 +275,16 @@ links = data.frame(source, target, value)
 #
 fai = read.table(faifile)
 names(fai) = c("Collapse","Collapse Length","b","a")
-fai[["Collapse Length"]][ fai[["Collapse Length"]] > 150000 ] = 150000
-p8 = ggplot(fai, aes(x=fai[["Collapse Length"]] )) + geom_histogram(alpha=0.8, fill="black", binwidth=3000)  + scale_fill_manual(values=col4) +
-  scale_x_continuous(labels = comma, breaks = seq(0, 150000, by = 25000) ) +
-  xlab("Collapse length (bp)") + ylab("Counts")+ myTheme
-p8
-mysave("CollapseLength.pdf", p8)
+top = 150000
+by = 25000
+fai[["Collapse Length"]][ fai[["Collapse Length"]] > top ] = top
+p0.1 = ggplot(fai, aes(x=fai[["Collapse Length"]] )) + 
+  geom_histogram(alpha=0.8, fill="black", binwidth=3000)  + 
+  scale_fill_manual(values=col4) +
+  scale_x_continuous( breaks=seq(0, top, by = by), labels=c( seq(0, (top-by)/1000, by = by/1000), "150+") ) +
+  xlab("Collapse length (kb)") + ylab("Counts")+ myTheme
+#p0.1
+mysave("CollapseLength.pdf", p0.1)
 
 
 #
@@ -322,28 +294,28 @@ p1 <- ggplot(df, aes(Status, PSVsPer1K, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   coord_cartesian(ylim=c(0, 100)) + 
   scale_fill_manual(values=col4) + myTheme
-p1
+#p1
 mysave("PSVsPer1K.pdf", p1)
 
 
 #
 # number of PSVs per type per cluster 
 #
-p1 <- ggplot(df, aes(Status, PSVsPerClusterPer1K, fill=Status)) + 
+p1.1 <- ggplot(df, aes(Status, PSVsPerClusterPer1K, fill=Status)) + 
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   coord_cartesian(ylim=c(0, 7)) + 
   scale_fill_manual(values=col4) + myTheme
-p1
-mysave("PSVsPerClusterPer1K.pdf", p1)
+#p1.1
+mysave("PSVsPerClusterPer1K.pdf", p1.1)
 #
 # number of PSVs per type 
 #
-p1 <- ggplot(df, aes(Status, numPSVs, fill=Status)) + 
+p1.2 <- ggplot(df, aes(Status, numPSVs, fill=Status)) + 
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   coord_cartesian(ylim=c(0, 100)) + 
   scale_fill_manual(values=col4) + myTheme
-p1
-mysave("numPSVs.pdf", p1)
+#p1.2
+mysave("numPSVs.pdf", p1.2)
 
 
 
@@ -354,7 +326,7 @@ p2 <- ggplot(df, aes(Status, numReads, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   coord_cartesian(ylim=c(0, 800)) +
   scale_fill_manual(values=col4) + myTheme
-p2
+#p2
 mysave("reads.pdf", p2)
 
 
@@ -364,7 +336,7 @@ mysave("reads.pdf", p2)
 p3 <- ggplot(df, aes(Status, numOfCCgroups, fill=Status)) + 
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) +
   scale_fill_manual(values=col4) + myTheme
-p3
+#p3
 mysave("numOfCCgroups.pdf", p3)
 
 #
@@ -373,7 +345,7 @@ mysave("numOfCCgroups.pdf", p3)
 p3 <- ggplot(df, aes(Status, copiesInRef, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   scale_fill_manual(values=col4) + myTheme
-p3
+#p3
 mysave("copies.pdf", p3)
 
 #
@@ -382,7 +354,7 @@ mysave("copies.pdf", p3)
 p3.2 <- ggplot(df, aes(Status, averageRefPerID, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   scale_fill_manual(values=col4) + myTheme + coord_cartesian(ylim=c(90,100))
-p3.2
+#p3.2
 mysave("averageRefPerID.pdf", p3.2)
 
 
@@ -392,18 +364,25 @@ mysave("averageRefPerID.pdf", p3.2)
 p4 <- ggplot(df, aes(Status, aveRefLength, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
   scale_fill_manual(values=col4) + myTheme
-p4
+#p4
 mysave("aveRefLength.pdf", p4)
 
 #
 # density of resovled vs partially resolved 
 #
-p8 = ggplot(dfs, aes(x=Length, fill=Status)) + geom_density(alpha=0.8)  + scale_fill_manual(values=col4) +
-  scale_x_continuous(labels = comma, breaks = round(seq(min(df$Length), max(df$Length), by = 25000),1)) +
-  theme(axis.text.y = element_blank()) +
-  xlab("Assembly length (bp)") + ylab("Density")+ myTheme
-p8
+p8 = ggplot(dfs, aes(x=Status, y=Length/1000, fill=Status) ) + 
+  geom_jitter(aes(color=Status), height = 0, width = 0, size=2) +
+  geom_violin( draw_quantiles = c(0.25, 0.5, 0.75) ) +
+  #geom_density(alpha=0.8, aes(x=Length/1000, fill=Status))  +
+  #geom_point(aes(Status, Length/1000, fill=Status), color="cyan") + 
+  scale_fill_manual(values=col4) +
+  scale_color_manual(values=col4) +
+  scale_y_continuous(labels = comma, breaks = round(seq(min(df$Length), max(df$Length), by = 25),1)) +
+  #theme(axis.text.y = element_blank()) +
+  ylab("Assembly length (kb)") + xlab("Status")+ myTheme 
+#p8
 mysave("assemblyLength.pdf",p8)
+#summary(dfr$Length)
 
 #
 # correlation between cc number and number in reference 
@@ -414,8 +393,25 @@ p5 <- ggplot(dfu, aes(y=copiesInRef, x=numOfCCgroups)) +
   geom_count() + coord_fixed() + geom_abline(intercept = 0, slope = 1, color="red") + 
   ggtitle(paste("R-squared =",as.character(corr))) +
   myTheme
-p5
+#p5
 mysave("cc_copies.pdf", p5)
+
+
+
+
+#
+# correlation between collapse size and assembly size 
+#
+corr = round(cor(dfs$Length, dfs$collapseLen), 2)
+print(corr)
+p5 <- ggplot(dfs, aes(y=Length/1000, x=collapseLen/1000)) + 
+  geom_point() + coord_fixed() + geom_abline(intercept = 0, slope = 1, color="red") + 
+  ggtitle(paste("R-squared =",as.character(corr))) +
+  ylab("Assembly length (kb)") + xlab("Collapse length (kb)")+ myTheme +
+  scale_y_continuous(labels = comma) +
+  scale_x_continuous(labels = comma)
+p5
+mysave("length_vc_collapse_size.pdf", p5)
 
 
 
@@ -428,7 +424,7 @@ p5 <- ggplot(dfu, aes(y=copiesInRef, x=numF)) +
   geom_count() +
   ggtitle(paste("R-squared =",as.character(corr))) +
   myTheme
-p5
+#p5
 mysave("failsVsCopies.pdf", p5)
 #
 # correlation numer of failuses and number of copies 
@@ -439,7 +435,7 @@ p5 <- ggplot(dfu, aes(y=numOfCCgroups, x=numF)) +
   geom_count() +
   ggtitle(paste("R-squared =",as.character(corr))) +
   myTheme
-p5
+#p5
 mysave("failsVsClusters.pdf", p5)
 #
 # correlation numer of failuses and number of copies 
@@ -452,7 +448,7 @@ p5 <- ggplot(dfu, aes(y=averageRefPerID, x=numF)) +
   ggtitle(paste("R-squared =",as.character(corr))) +
   coord_cartesian(ylim=c(80, 100)) +
   myTheme
-p5
+#p5
 mysave("failsVsPerID.pdf", p5)
 
 
@@ -480,7 +476,7 @@ p6 = ggplot() + geom_ribbon(data=temp, aes(x=bestPerID, ymin=0, ymax=ECDF, fill=
   ylab("Fraction of Assemblies") + xlab("Best Percent Identity Match") +
   theme(legend.background = element_rect(size=0.5, linetype="solid", color="black"), 
         legend.title=element_blank())
-p6
+#p6
 mysave("cdf.pdf",p6)
 
 p7 <- p6 +  coord_cartesian(xlim=c(99.5, 100)) +
@@ -488,7 +484,7 @@ p7 <- p6 +  coord_cartesian(xlim=c(99.5, 100)) +
   geom_segment(aes(x = 0, xend = 99.8, y = miny,  yend = miny), color="darkred") +
   theme(legend.background = element_rect(size=0.5, linetype="solid", color="black"), 
         legend.title=element_blank())
-p7
+#p7
 mysave("cdf_zoomed.pdf", p7)
 
 #
@@ -546,25 +542,26 @@ p6.4 <- p6.3 +  coord_cartesian(xlim=c(97.5, 100)) +
 #
 # this takes forever and lots of memory, so only plot if I set this if statemtn
 #
-if(F){
-  p6.3
+if(T){
   mysave("cdf_by_bp.pdf", p6.3)
-  p6.4
   mysave("cdf_by_bp_zoomed.pdf", p6.4)
 }
-
+if(F){
+  p6.3
+  p6.4
+}
 
 
 
 #
 # read in marks data for plot
 #
-new = df[df$Status=="Resolved", c("bestMatch")]
-new$averagePerID = df[df$Status=="Resolved", "averageRefPerID"]
-new$aveRefLen = df[df$Status=="Resolved", "aveRefLength"]
-new$chr = df[df$Status=="Resolved", "bestChr"]
-new$start= df[df$Status=="Resolved", "bestStart"]
-new$end = df[df$Status=="Resolved","bestEnd"]
+new = df[df$Status==res, c("bestMatch")]
+new$averagePerID = df[df$Status==res, "averageRefPerID"]
+new$aveRefLen = df[df$Status==res, "aveRefLength"]
+new$chr = df[df$Status==res, "bestChr"]
+new$start= df[df$Status==res, "bestStart"]
+new$end = df[df$Status==res,"bestEnd"]
 new$Status=rep("ABP", length(new$aveRefLen))
 new$ID=seq(1, length(new$aveRefLen))
 new$averagePerID[new$averagePerID >= 100.0] = 99.999999
@@ -666,13 +663,13 @@ myColors = c(green, black, red)
 names(myColors) <- levels(as.factor(gw$Status))
 
 plots = ( plotSegDups(gw,"newResolvedByPoint.pdf" ,"newResolvedByDensity.pdf", myColors) )
-plots[1]
-plots[2]
+#plots[1]
+#plots[2]
 
 gw2 = gw[gw$Status != "ABP",]
 plots2 = ( plotSegDups(gw2,"ResolvedByPoint.pdf" ,"ResolvedByDensity.pdf", myColors) )
-plots2[1]
-plots2[2]
+#plots2[1]
+#plots2[2]
 
 
 
@@ -698,35 +695,17 @@ sum(numres$len) / sum(merged$len)
 
 1-sum(unres$len ) / sum(merged$len) 
 
-#
-# Run a random forest to detemine what partially resolved ones might actually be correct 
-# 
-library(randomForest)
 
-#dff <- as.data.frame(unclass(all))
-dff <- as.data.frame(unclass(dfs))
-dff$Status = droplevels(dff$Status)
-sapply(dff, class)
 
-# model fit
-# note that you must turn the ordinal variables into factor or R wont use
-# them properly
-model <- randomForest(formula = Status ~ totalPSVs + numPSVs + aveRefLength + averageRefPerID + numReads + 
-                        Length + copiesInRef + PSVsPerClusterPer1K + collapseLen + numOfCCgroups + totalReads, 
-                      data  = dff,
-                      ntree=2000, importance=TRUE)
-#plot of model accuracy by class
-plot(model)
-model
 
-# Importance of each predictor.
-print(importance(model))
-varImpPlot(model)
-
-dff$prediction = predict(model)
-candidates = dff[ dff$Status == pr & dff$prediction == res,]
-candidates = candidates[order(candidates$bestPerID),]
-candidates = candidates[candidates$bestPerID > 96.0 & candidates$bestPerID < 99.0,]
-candidates
+length(myplots)
+args$dest = paste0(args$dest, "/")
+file = paste0(args$dest, "all.pdf")
+pdf(file,  width = w/2, height = h/2)
+for(t in 1:length(myplots)){
+  print(t)
+  print(myplots[[t]])
+}
+dev.off()
 
 

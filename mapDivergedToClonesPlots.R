@@ -1,5 +1,4 @@
 #!/usr/bin/env Rscript
-
 library(ggplot2)
 library(scales)
 library(RColorBrewer)
@@ -11,8 +10,14 @@ library(gtable)
 #install.packages("svglite")
 suppressPackageStartupMessages(library("argparse"))
 
+script.dir <- dirname(sys.frame(1)$ofile)
+setwd(script.dir)
+source("ggplot_theme.R")
 
 genome = "Mitchell_CHM1_V2"
+genome = "Yoruban_feb_2018"
+genome = "CHM13"
+
 
 asmdir = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/", genome)
 refdir = "~/Desktop/work/assemblies/hg38/"
@@ -43,7 +48,7 @@ geneRegex
 
 m=1
 h=15*m
-w=25*m
+w=30*m
 #
 # function to save plots 
 #
@@ -54,7 +59,7 @@ mysave <- function(name, p){
   ggsave(name, plot = p,  width = w, height = h, units = "cm")
 }
 
-file = paste0(asmdir, "betterBlasrMap/clonemapped.pd")
+file = paste0(asmdir, "betterBlasrMap/mapped.pd")
 mapped = read.table(file, header=T)
 
 mapped$clonePerID = mapped$perID_by_matches 
@@ -148,8 +153,8 @@ show$clonePerID = format(round(show$clonePerID, 2), nsmall = 2)
 names(show) <- c("Label", "Gene(s)", "% ID")
 # Set theme to allow for plotmath expressions
 
-mycolors = c( rep("#FFFFFF", maxShownGenes), rep("#e9e9e9", counter - maxShownGenes))
-tsize = 0.4
+mycolors = c( rep("#FFFFFF", maxShownGenes), rep("#e9e9e9", max(counter - maxShownGenes,0) ))
+tsize = 0.3
 tt <- gridExtra::ttheme_minimal(
     core = list(fg_params=list(cex = tsize, parse=T), 
                 bg_params = list(fill=mycolors  )),
@@ -180,14 +185,70 @@ tbl <- gtable_add_grob(tbl,
 # Plot chart and table into one object
 x = grid.arrange(plots[[4]], tbl,
              ncol=2, 
-             widths = c(5,2),
+             widths = c(4,3),
              padding=unit(1, "cm")) 
 
-
-mysave(paste0(plotsdir, "cloneVerifiedWithGenes.svg"), x)
+print(x)
+#mysave(paste0(plotsdir, "cloneVerifiedWithGenes.svg"), x)
 mysave(paste0(plotsdir, "cloneVerifiedWithGenes.pdf"), x)
 
 
+
+
 dim(validated)
+y =sum(validated$length)
+x = 46103616 # yoruban 
+#x = 16931966 # CHM1
+x = 40466964 # CHM13 
+y
+y/x
+
+
+
+file = paste0(asmdir, "/betterBlasrMap/all.genes.bed")
+df = read.table(file, header=F)
+colnames(df) = c("chr", "start", "end", "id", "perID", "gene")
+notLOC = grep("LOC", df[[6]], invert=T)
+df = df[notLOC,]
+
+df$Length = df$end-df$start
+summary(df$Length)
+
+df$Status = "Diverged"
+df$Status[df$perID>99.8] = "Assembled"
+df = unique(df)
+df = df[order(df$gene, df$perID),]
+ggplot(df) + geom_bar(aes(Status, fill=Status))
+
+
+
+
+totalbp=sum(df$Length)
+
+bpid = c( 100, rep(df$perID, round(df$Length/1000) ) )
+bpid = data.frame(perID=bpid)
+bpid$Status  = "Diverged"
+bpid$Status[bpid$perID >= 99.8 ] = "Assembled"
+bpid$Mb_of_Assembly = ecdf(bpid$perID)(bpid$perID)*totalbp/1000000
+dim(bpid)
+bpid = bpid[bpid$Mb_of_Assembly > 1, ]
+
+ggplot(bpid, aes(x=perID, y=Mb_of_Assembly)) + geom_line() + 
+  geom_ribbon(aes(ymin=0,ymax=Mb_of_Assembly, fill=Status)) + 
+  myTheme + scale_fill_manual(values=col4)
+
+
+
+df
+
+geneRegex = paste0(geneRegex, "|NOTCH.*|SRGAP2.*")
+important = df[ grepl(geneRegex, df$gene), ]
+important
+
+
+
+
+
+
 
 

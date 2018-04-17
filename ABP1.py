@@ -22,49 +22,39 @@ scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts
 base2="/net/eichler/vol2/home/mvollger/projects/abp"
 utils="/net/eichler/vol2/home/mvollger/projects/utility"
 
-# options for the verison of blasr in pitchfork
-pitchfork="source /net/eichler/vol2/home/mvollger/projects/builds/pitchfork/setup_pitchfork.sh && "
 
-
-
-
-#settings
+sanke_dir = os.path.dirname(workflow.snakefile)
+print(snake_dir)
 configFile = "abp.config.json"
+configFile2 = snake_dir + "abp.config.json"
 if(os.path.exists(configFile)):
 	configfile:
 		configFile	
 	MINCOV=config["MINCOV"]
 	MAXCOV=config["MAXCOV"]
 	MINTOTAL=config["MINTOTAL"]
-	print("Thresholds loaded from coverage.json")
-	rule all:	
-		input:
-			dupbed="ref.fasta.bed",
-			depth="dup_depth.tsv",
-			#png="depthProfile.png",
-			thresholdPng="hetProfile/threshold.png",
-			pdf='mi.cuts.gml.pdf',
-			mean = "dup_mean.intersect",
-			maxx = "dup_max.intersect",
-			groups=dynamic("group.{n}.vcf"),
-			itPlotDone="iteration.plots.done",
-		message: 'Running the frist half of ABP'
-	# need to say which blasr to use 
 	blasr = config["blasr"]
-else:
-	blasr = '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
-	MINCOV = int(os.environ.get("MINCOV", "30"))	
-	MAXCOV = int(os.environ.get("MAXCOV", "50"))
-	# only consider collapsed sites
-	MINTOTAL = int(os.environ.get("MINTOTAL", "100"))
-	# if there is no min and max coverage only run the script up until the hetprofile part
-	rule all:	
-		input:
-			#png="depthProfile.png",
-			thresholdPng="hetProfile/threshold.png",
-		message: 'Running only to generate the het profile, must include a coverage.json to run the full thing'
+
+elif(os.path.exists(configFile2)):
+	configfile:
+		configFile2	
+	MINCOV=config["MINCOV"]
+	MAXCOV=config["MAXCOV"]
+	MINTOTAL=config["MINTOTAL"]
+	blasr = config["blasr"]
+
+blasr = snake_dir + "software/blasr/bin/blasr"
+blasr43 = snake_dir + "software/blasr/bin/blasr43"
 
 print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
+
+rule all:	
+	input:
+		dupbed="ref.fasta.bed",
+		pdf='CC/mi.cuts.gml.pdf',
+		groups=dynamic("group.{n}.vcf"),
+		png="Coverage.png",
+		depth="snvs/depth.tsv",
 
 #
 # This realigns reads with match/mismatch parameters that make it more
@@ -161,6 +151,8 @@ rule reads_to_fasta:
     shell:
         '''samtools view {input} | awk '{{ print ">"$1; print $10; }}' > {output}'''
 
+
+
 #
 # get a depth profile and reads in a fasta format
 #
@@ -169,21 +161,14 @@ rule depthFromBam:
         reads="reads.fasta",
         bam="reads.bam",
     output:
-        depth="depth.tsv"
+        depth="snvs/depth.tsv"
     shell:
         """
         samtools depth -aa {input.bam} > {output.depth}
         """
 
-rule depthProfile:
-    input:
-        depth="depth.tsv"
-    output:
-        png="depthProfile.png"
-    shell:
-        """
-        {utils}/plotDepth.py {input.depth} {output.png}
-        """
+
+
 #
 #
 # lets just look at teh het profile
@@ -193,47 +178,85 @@ rule hetProfile:
         reads="reads.bam",
         ref="ref.fasta"	,
     output: 
-        hetsnv="hetProfile/assembly.consensus.fragments.snv",
-        hetvcf="hetProfile/assembly.consensus.nucfreq.vcf",
+        nucfreq="snvs/nofilter.consensus.nucfreq",
     shell:
         """
-        mkdir -p hetProfile
-        pushd hetProfile
-        {scriptsDir}/BamToSNVTable.sh ../{input.reads} ../{input.ref} 0 0
-        popd
+		PBS=/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/
+		samtools mpileup -q 0 -Q 0 {input.reads} | \
+				$PBS/Phasing/MpileupToFreq.py  /dev/stdin | \
+				$PBS/Phasing/PrintHetFreq.py 0 \
+				--maxCount 100 \
+				--minTotal 0 \
+				> {output.nucfreq}
+
         """
 rule thresholdProfile:
     input:
-        hetsnv="hetProfile/assembly.consensus.fragments.snv",
-        hetvcf="hetProfile/assembly.consensus.nucfreq.vcf",
+        nucfreq="snvs/nofilter.consensus.nucfreq",
     output: 
-        thresholdPng="hetProfile/threshold.png",
+        png="Coverage.png",
     shell:
         """
-        pushd hetProfile
-        autoThreshold.py
-        popd
+		module purge
+		. /etc/profile.d/modules.sh
+		module load modules modules-init modules-gs/prod modules-eichler
+		module load anaconda/20161130
+		autoThreshold.py --nucfreq {input.nucfreq} --png {output.png} 
         """
-#
+
 #
 # Given the alignments, count the frequency of each base at every
 # position, and estimate the SNVs from this frequency. 
 #
-#echo "{scriptsDir}/BamToSNVTable.sh reads.bam ref.fasta MINCOV" ??? what is this for ??? 
 rule create_SNVtable_from_reads:
-    input:
-        hetsnv="hetProfile/assembly.consensus.fragments.snv",
-        reads="reads.bam",
-        ref="ref.fasta"	
-    output: 
-        snv="assembly.consensus.fragments.snv",
-        vcf="assembly.consensus.nucfreq.vcf",
-    shell:
-        """
-        {scriptsDir}/BamToSNVTable.sh {input.reads} {input.ref} {MINCOV} {MINTOTAL}
-        #{scriptsDir}/BamToSNVTable.sh {input.reads} {input.ref} {MINCOV} 0
-        autoThreshold.py
-        """
+	input:
+		png="Coverage.png",
+		reads="reads.bam",
+		ref="ref.fasta"	,
+	output: 
+		snv="snvs/assembly.consensus.fragments.snv",
+		vcf="snvs/assembly.consensus.nucfreq.vcf",
+		nucfreq="snvs/assembly.consensus.nucfreq",
+		filt="snvs/assembly.consensus.nucfreq.filt",
+		frag="snvs/assembly.consensus.fragments",
+	shell:
+		"""
+		#{scriptsDir}/BamToSNVTable.sh {input.reads} {input.ref} {MINCOV} {MINTOTAL}
+		PBS=/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/
+		
+		echo "Sam to nucfreq"
+		samtools mpileup -q 0 -Q 0 {input.reads} | \
+				$PBS/Phasing/MpileupToFreq.py  /dev/stdin | \
+				$PBS/Phasing/PrintHetFreq.py {MINCOV} \
+				--maxCount {MINCOV} \
+				--minTotal {MINTOTAL} \
+				> {output.nucfreq}
+		
+		echo "filter nucfreq"
+		samtools view -h {input.reads} | \
+				/net/eichler/vol5/home/mchaisso/projects/pbgreedyphase/readToSNVList  \
+				--nft {output.nucfreq} \
+				--sam /dev/stdin \
+				--ref {input.ref} \
+				--minFraction 0.01 \
+				--minCoverage {MINCOV} \
+				--out {output.frag} \
+				--nftOut {output.filt}
+		
+		echo "filtered to vcf"
+		{scriptsDir}/FreqToSimpleVCF.py --freq {output.filt} \
+				--ref {input.ref} \
+				--out {output.vcf} 
+		
+		echo "vcf to snv"
+		{scriptsDir}/FragmentsToSNVList.py  \
+				--fragment \
+				--frags {output.frag} \
+				--vcf {output.vcf} \
+				--out {output.snv}
+
+
+		"""
 
 
 #
@@ -244,194 +267,78 @@ rule create_SNVtable_from_reads:
 #
 rule SNVtable_to_SNVmatrix:
     input:
-        snv="assembly.consensus.fragments.snv"	
+        snv="snvs/assembly.consensus.fragments.snv"	
     output:
-        mat="assembly.consensus.fragments.snv.mat",
-        snvsPos="assembly.consensus.fragments.snv.pos"
+        mat="snvs/assembly.consensus.fragments.snv.mat",
+        snvsPos="snvs/assembly.consensus.fragments.snv.pos"
     shell:
        '{scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvsPos} --mat {output.mat}'  
 
 #
 # create duplicaitons.fasta
+# this was moved to the pre processing step 
 #
-#GRCh38="/net/eichler/vol21/projects/bac_assembly/nobackups/genomeWide/Mitchell_CHM1/hg38/ucsc.hg38.no_alts.fasta"
-GRCh38="/net/eichler/vol2/home/mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta"
-fai = GRCh38 + ".fai"
-sa = GRCh38 + ".sa"
-
-rule duplicationsFasta1:
-	input:
-		dupref="ref.fasta",
-	output:
-		dupsam="ref.fasta.sam",
-	threads: 8
-	shell:
-		"""
-		{blasr} -clipping subread {input.dupref} {GRCh38} -nproc {threads} -sa {sa} \
-				-sam -bestn 30 -out {output.dupsam} -minMatch 15 -maxMatch 20
-		"""
-
-rule duplicationsFasta2:
-    input:
-        dupsam="ref.fasta.sam",
-    output:
-        duprgn="ref.fasta.rgn",
-    shell:
-        """
-        ~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >9000 && $9 > 0.85) print $1":"$2"-"$3 }}' > {output.duprgn}
-        """
-
-rule rgnToBed:
-    input:
-        duprgn="ref.fasta.rgn"
-    output:
-        dupbed="ref.fasta.bed"
-    run:
-        records = open(input[0]).readlines()
-        rtn = ""
-        for rec in records:
-            temp = rec.strip().split(":")
-            chro = temp[0]
-            nums = temp[1].split("-")
-            start = nums[0]
-            end   = nums[1]
-            rtn += "{}\t{}\t{}\n".format(chro, start, end)
-        f = open(output[0], "w+")
-        f.write(rtn)
-        f.close()
-
-rule slopBed:
-    input:
-        dupbed="ref.fasta.bed"
-    output:
-        duplong="ref.fasta.long.bed"
-    shell:
-        """
-        bedtools slop -i {input.dupbed} -g {fai} -b 100000 > {output.duplong}
-        """
-
-rule duplicationsFasta3:
-    input:
-        duplong="ref.fasta.long.bed",
-        duprgn="ref.fasta.rgn"
-    output:
-        dup="duplications.fasta",
-    shell:
-        """
-        #samtools faidx {GRCh38} `cat {input.duprgn}` > {output.dup}
-		# the awk part removes duplicate entires in duplicaitons.fasta
-        bedtools getfasta -fi {GRCh38} -bed {input.duplong} | awk '!a[$0]++' >  {output.dup} 
-        """
-
-rule depthOnDuplications:
-    input:
-        reads="reads.fasta",
-        ref = "duplications.fasta",
-    output:
-        bam = "reads.dup.bam",
-        depth="dup_depth.tsv",
-    threads:8
-    shell:
-        """
-        {blasr} -sam  \
-                -nproc {threads} -out /dev/stdout \
-                -minAlignLength 500 -preserveReadTitle -clipping subread \
-                {input.reads} {input.ref} | \
-                samtools view -bSh -F 4 - | \
-                samtools sort -T tmp -o {output.bam}
-        
-        samtools depth -aa {output.bam} > {output.depth}
-
-        """
-
-#'''
 
 #
 # Set up the ground truth if it exists.  Map the collapsed sequence
-# back to the human genome, and output all th regions that are
-# sufficiently similar to the collapse.
 #
-MAX_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.max_identity.bed"
-MEAN_SEGDUPS="/net/eichler/vol5/home/mchaisso/projects/SegDups/GRCh38/grch38_superdups.mean_identity.bed"
+if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta") > 0 ):
+	rule depthOnDuplications:
+		input:
+			reads="reads.fasta",
+			ref = ancient( "duplications.fasta" ),
+		output:
+			bam = "dup/reads.dup.bam",
+			depth="dup/dup_depth.tsv",
+		threads:8
+		shell:
+			"""
+			{blasr} -sam  \
+					-nproc {threads} -out /dev/stdout \
+					-minAlignLength 500 -preserveReadTitle -clipping subread \
+					{input.reads} {input.ref} | \
+					samtools view -bSh -F 4 - | \
+					samtools sort -T tmp -o {output.bam}
+			
+			samtools depth -aa {output.bam} > {output.depth}
+			"""
 
-#if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta") > 0 ):
-if(True):
-    rule realignReads_to_Dups:
-        input:
-            "reads.fasta",
-            "duplications.fasta"
-        output:
-            "reads.dups.m4"
-        shell:
-            '{blasr} {input} -m 4 -bestn 1 -preserveReadTitle -out {output} -nproc 4'
+	rule realignReads_to_Dups:
+		input:
+			depth="dup/dup_depth.tsv",
+			reads = "reads.fasta",
+			genome = ancient( "duplications.fasta" ),
+		output:
+			"dup/reads.dups.m4",
+		threads: 8 
+		shell:
+			'{blasr} {input.reads} {input.genome} -m 4 -bestn 1 -preserveReadTitle -out {output} -nproc {threads}'
 
-    rule orderMatByalignments: #get more explanation
-        input:
-            "assembly.consensus.fragments.snv.mat",
-            "reads.dups.m4"
-        output:
-            "assembly.consensus.fragments.snv.mat.categorized"
-        shell:
-            '{scriptsDir}/sorting/OrderMatByAlignments.py {input}  > {output}'
+	rule orderMatByalignments: #get more explanation
+		input:
+			"snvs/assembly.consensus.fragments.snv.mat",
+			"dup/reads.dups.m4"
+		output:
+			"snvs/assembly.consensus.fragments.snv.mat.categorized"
+		shell:
+			'{scriptsDir}/sorting/OrderMatByAlignments.py {input}  > {output}'
 
-    rule fastaToBed:
-        input: "duplications.fasta"
-        output: "duplications.bed"
-        run:
-            fasta = list(SeqIO.parse("duplications.fasta", "fasta"))
-            rtn = ""
-            for rec in fasta:
-                temp = rec.id.split(":")
-                chro = temp[0]
-                nums = temp[1].split("-")
-                start = nums[0]
-                end   = nums[1]
-                rtn += "{}\t{}\t{}\n".format(chro, start, end)
-            f = open(output[0], "w+")
-            f.write(rtn)
-            f.close()
-
-    rule sortBed:
-        input: "duplications.bed"
-        output: "duplications.sorted.bed"
-        shell:
-            '''
-            bedtools sort -i {input} > {output}
-            '''
-
-    rule intersectBed:
-        input: "duplications.sorted.bed"
-        output:
-            maxx = "dup_max.intersect",
-            mean = "dup_mean.intersect"
-        shell:
-            '''
-            bedtools intersect -a {input} -b {MAX_SEGDUPS}  -wa -wb > {output.maxx}
-            bedtools intersect -a {input} -b {MEAN_SEGDUPS} -wa -wb > {output.mean}
-            '''
 else:
-    rule ifNoDuplicationsFasta:
-        input:
-            "assembly.consensus.fragments.snv.mat"
-        output:
-            "assembly.consensus.fragments.snv.mat.categorized"
-        shell:
-            '''
+	rule ifNoDuplicationsFasta:
+		input:
+			"snvs/assembly.consensus.fragments.snv.mat"
+		output:
+			"snvs/assembly.consensus.fragments.snv.mat.categorized"
+		shell:
+			"""
+			# this adds a fake catigory on the end
+			cat {input} | awk '{{ print $1"\t"$2"\tall"}}' > {output}
+			"""
+
+			'''
             {base2}/categorize.sh {input} {output}
             '''
-            #'''cat {input} | awk { print $1"\t"$2"\tall" } > {output}'''
 
-    rule noIntersect:
-        input: 
-            "assembly.consensus.fragments.snv.mat.categorized"
-        output:
-            maxx = "dup_max.intersect",
-            mean = "dup_mean.intersect"
-        shell:
-            '''
-            > {output.maxx}
-            > {output.mean}
-            '''
 
 #
 # This finds PSVs that are connected by a sufficient number of
@@ -439,12 +346,12 @@ else:
 #
 rule createPSVgraph:
 	input:
-		matrix="assembly.consensus.fragments.snv.mat.categorized",
-		vcf="assembly.consensus.nucfreq.vcf"
+		matrix="snvs/assembly.consensus.fragments.snv.mat.categorized",
+		vcf="snvs/assembly.consensus.nucfreq.vcf"
 	output:
-		graph="mi.gml",
-		adj="mi.adj",
-		mi="mi.mi",
+		graph="CC/mi.gml",
+		adj="CC/mi.adj",
+		mi="CC/mi.mi",
 	shell:
 		"""
 		{scriptsDir}/PairedSNVs.py {input.matrix} --minCov {MINCOV} --maxCov {MAXCOV} \
@@ -453,14 +360,28 @@ rule createPSVgraph:
 		"""
 
 
+#
+# generate repulsion edges 
+#
+rule GenerateRepulsion:
+	input:
+		graph="CC/mi.gml",
+		mi="CC/mi.mi",
+	output:
+		rep = "CC/mi.repulsion",
+	shell:
+		"""
+		{base2}/GenerateRepulsion.py --shared 5 --lrt 1.5 --max 3 --gml {input.graph} --mi {input.mi} --out {output.rep}
+		"""
+
 runIters = True
 runIters = False
-posFile = "mi.gml"
+posFile = "CC/mi.gml"
 if(runIters and os.path.exists(posFile)):
 	print("Going to export iterations of CC for debugging")
 	#showIters = " --exportEachIteration --layout {} ".format(posFile)	
 	showIters = " --exportEachIteration "
-	convert = "convert extraCCplots/iteration.*.png all_cc_iterations.pdf"
+	convert = "convert extraCCplots/iteration.*.png extraCCplots/all_cc_iterations.pdf"
 else:
 	showIters = ""
 	convert = ""
@@ -471,25 +392,28 @@ else:
 #
 rule correlationClustering:
 	input:
-		graph="mi.gml",
+		graph="CC/mi.gml",
+		rep = "CC/mi.repulsion",
 	output:
-		out="mi.cuts.gml",
-		#plt="mi.gml.png", # now jsut only uses my plot
-		sites="mi.gml.sites",
-		cuts="mi.gml.cuts"
+		out="CC/mi.cuts.gml",
+		sites="CC/mi.gml.sites",
+		cuts="CC/mi.gml.cuts",
 	shell:
 		"""	
 		mkdir -p extraCCplots
+		rm -rf extraCCplots/*
+
 		{scriptsDir}/MinDisagreeClusterByComponent.py  \
-				--graph {input.graph} \
-				--niter 1000 --swap 10000 --factor 2 \
-				--plotRepulsion {showIters} \
-				--cuts {output.cuts} --sites {output.sites} --out {output.out}
-		
+			--graph {input.graph} \
+			--repulsion {input.rep} \
+			--niter 10000 --swap 1000000 --factor 1 \
+			--plotRepulsion {showIters} \
+			--cuts {output.cuts} --sites {output.sites} --out {output.out}
+			#--seed \
+	
 		# it running all iteraitons convert them into a booklet
 		{convert}
-
-		for x in $(cat mi.gml.sites); do echo $x; done | sort | uniq -d > notUnique.sites
+		
 		"""
 
 
@@ -509,15 +433,23 @@ rule index_ref_fasta:
 # each component.
 #
 rule makeCutsInPSVgraph:
-    input:
-        refIdx="ref.fasta.fai",
-        cuts="mi.gml.cuts",
-        snvsPos="assembly.consensus.fragments.snv.pos",
-        vcf="assembly.consensus.nucfreq.vcf"	
-    output:
-        vcfs=dynamic("group.{n}.vcf"), 
-    shell:
-        'rm -rf group.*; {scriptsDir}/CutsToPhasedVCF.py {input.cuts} {input.snvsPos} {input.vcf} --minComponent 4 --summary mi.comps.txt --ref {input.refIdx}'
+	input:
+		refIdx="ref.fasta.fai",
+		cuts="CC/mi.gml.cuts",
+		snvsPos="snvs/assembly.consensus.fragments.snv.pos",
+		vcf="snvs/assembly.consensus.nucfreq.vcf"	
+	output:
+		vcfs=dynamic("group.{n}.vcf"), 
+	params:
+		comps="CC/mi.comps.txt", 
+	shell:
+		"""
+		rm -rf group.*
+		{scriptsDir}/CutsToPhasedVCF.py {input.cuts} {input.snvsPos} {input.vcf} \
+				--minComponent 4 \
+				--ref {input.refIdx} \
+				--summary {params.comps}
+		"""
 
 
 #
@@ -526,64 +458,15 @@ rule makeCutsInPSVgraph:
 #
 rule gephi:
 	input:
-		cuts='mi.cuts.gml'
+		cuts="CC/mi.cuts.gml"
 	output:
-		pdf='mi.cuts.gml.pdf',
+		pdf="CC/mi.cuts.gml.pdf",
 	run:
-		shell(base2 + "/gephi/gephi.sh" )
+		shell("mkdir -p extraCCplots")
+		shell(base2 + "/gephi/gephi.sh {input.cuts} mi.cuts.gml" )
+		shell("mv mi.cuts.gml.pdf {output.pdf}")
 		collapse = os.path.basename(os.getcwd()) + ".pdf"
 		shell("cp " + output["pdf"] + " " + collapse)
 
-
-#
-#
-# The --exportEachIteration flag in creates gml files at every iteration with the form 
-# iterations.{component index}.{iteration index}.gml. I want to plot them all with gephi.
-# that is the purpose of this rule
-#
-if(False):
-	rule IterationGephi:
-		input:
-			ccdone="mi.cuts.gml",
-			pdfdone='mi.cuts.gml.pdf',
-		output:
-			itPlotDone="iteration.plots.done",
-		run:
-			for gml in sorted(glob.glob("iteration.*.*.gml")):
-				print(gml)
-				shell( base2 + "/gephi/gephi.sh " + gml )
-			shell("touch {output.itPlotDone}")
-else:
-	rule NoIterationGephi:
-		input:
-			ccdone="mi.cuts.gml",
-			pdfdone='mi.cuts.gml.pdf',
-		output:
-			itPlotDone="iteration.plots.done",
-		run:
-			shell("touch {output.itPlotDone}")
-
-
-
-
-
-#
-# dynamic wildcards are grabing this across multiple directoeis, and there is no way I can figure out to 
-# stop it from doing that so I made a second file so I dont have to use dynamic, this second snakemake file
-# must be called by a master script or seperatly.
-#
-'''
-rule startPSV2:
-    input: 
-        dynamic("group.{n}.vcf"),
-        depth="dup_depth.tsv",
-        maxx = "dup_max.intersect",
-        pdf='mi.cuts.gml.pdf',
-        mean = "dup_mean.intersect",
-        dupbed="ref.fasta.bed",
-        png="depthProfile.png",
-    output: "PSV1_done"
-    shell: "touch {output}"
-'''
 
 

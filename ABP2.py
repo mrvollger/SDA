@@ -38,7 +38,7 @@ for group in groups:
     IDS.append(group[1])
 
 
-rule master:
+rule all:
     input: "PSV2_done"
     message: "Running PSV2"
 
@@ -88,7 +88,7 @@ rule phasedVCF:
 # whatshap requires unique bam entries, make those
 # also requires that pysam is installed, should be taken care of by loading the whatshap anaconda env 
 rule bamForWhatsHap:
-    input: "reads.bam"
+    input: "reads.bam", expand('group.{ID}.vcf', ID=IDS)
     output: 'reads.sample.bam'
     shell:
         """
@@ -116,72 +116,24 @@ rule whatsHap:
         hap= 'group.{n}/haplotagged.bam',
         hapH1= 'group.{n}/H1.WH.sam',
         hapH2= 'group.{n}/H2.WH.sam'
-    threads: 1 # for some reason loading this env multiple times breaks it, so stop from parallel exe
-                # this should no longer be nessisary as whatshap is installed in the new anaconda
     shell:
         """
         source {base2}/env_whatshap.cfg 
-        #source activate whatshap  # this should no longer be nessisary as whatshap is installed in the new anaconda
-        whatshap haplotag -o  {output.hap} --reference ref.fasta {input.hapvcf} {input.hapbam} 
+        #whatshap haplotag -o  {output.hap} --reference ref.fasta {input.hapvcf} {input.hapbam} 
+        # the above is probably a bad idea, it causes a lot more reads to exist in more than one haplotype 
+		whatshap haplotag -o  {output.hap} {input.hapvcf} {input.hapbam} 
         samtools view -h -o - {output.hap} | grep -E "^@|HP:i:1" >  {output.hapH1} 
         samtools view -h -o - {output.hap} | grep -E "^@|HP:i:2" >  {output.hapH2}
+		
+		
+		# this check how much overlap there is of reads between groups  
+		# overlapOfReadsCheck.py "group.*/H2.WH.sam" > read_collision.txt
         """
 #-----------------------------------------------------------------------------------------------------#
 
 
 
-#-----------------------------------------------------------------------------------------------------#
 #
-# This is also a partitioning script but it was written by mark, and does not seem to work quite as well
-# however I am still running it in order to comapre results
-#
-rule partitionReads:
-    input: 
-        vcf=  'group.{n}.vcf',
-        pgroup= 'group.{n}/group.{n}',
-        bam=  'reads.bam',
-        # the following just makes sure whatshap is run first
-        hapH2= 'group.{n}/H2.WH.sam'
-    output:
-        # these are switched from 1 and 2 because marks partition is the opposite of whatshap and I want
-        # them to be the same H1 H2 convention from here on out
-        group1='group.{n}/H2.Mark.sam',
-        group2='group.{n}/H1.Mark.sam'
-    shell:
-    	"""
-        #samtools view -h {input.bam} > temp.txt
-        samtools view -h {input.bam} \
-	    	| ~mchaisso/projects/pbgreedyphase/partitionByPhasedSNVs \
-		    	--vcf {input.vcf} \
-			    --ref ref.fasta \
-			    --h1 {output.group1}  --h2 {output.group2} --sam /dev/stdin \
-			    --unassigned /dev/null \
-				    	--phaseStats group.{wildcards.n}/group.stats \
-					    --block 4 \
-					    --minGenotyped 2 \
-					    --minDifference 3 \
-                        || touch {output.group1} && touch {output.group2}
-        """
-
-# generate a fasta file from the partition
-rule fastaFromPartition:
-    input: 
-        group1='group.{n}/H1.Mark.sam',
-        group2='group.{n}/H2.Mark.sam'
-    output:
-        pfasta1='group.{n}/H1.Mark.fasta',
-        pfasta2='group.{n}/H2.Mark.fasta'
-    shell:
-        '''
-        grep -v "^@" {input.group1}  | awk '{{ print ">"$1; print $10;}}' > {output.pfasta1} 
-        grep -v "^@" {input.group2}  | awk '{{ print ">"$1; print $10;}}' > {output.pfasta2}
-        '''
-
-        #'make -f {base2}/PartitionReads.mak VCF={input.vcf} OUTDIR=group.{wildcards.n}/group HAP=2'
-#-----------------------------------------------------------------------------------------------------#
-
-
-
 #-----------------------------------------------------------------------------------------------------#
 #
 # This part runs the assembly based on the partitions 
@@ -192,9 +144,6 @@ rule fastaFromPartition:
 rule readsFromSam:
     input: 
         H2= 'group.{n}/H2.{prefix}.sam',
-        # the following just makes sure whatshap was run and that marks partition was run
-        #hapH2=  'group.{n}/H2.WH.sam',
-        #markH2= 'group.{n}/H2.Mark.sam' 
     output:
         pfasta= 'group.{n}/{prefix}.reads.fasta'
     shell:
@@ -211,12 +160,6 @@ rule readsFromSam:
             touch {output.pfasta};
         fi
 
-		#cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
-        #    ~mchaisso/projects/PacBioSequencing/scripts/falcon/FormatFasta.py --fakename  > \
-		#	{output.pfasta} || \
-		#	touch {output.pfasta}
-
-
         rm -f group.{wildcards.n}/{wildcards.prefix}.temp.txt 
         """
 
@@ -224,7 +167,7 @@ rule readsFromSam:
 rule runAssembly:
     input: 'group.{n}/{prefix}.reads.fasta'
     output: 'group.{n}/{prefix}.assembly/asm.contigs.fasta'
-    threads: 16
+    threads: 4
     shell:
         """
 		# make sure we actaully re run the assembly
@@ -241,7 +184,7 @@ rule runAssembly:
                 -d group.{wildcards.n}/{wildcards.prefix}.assembly \
 		        maxThreads={threads} cnsThreads={threads} ovlThreads={threads} \
 		        mhapThreads={threads} \
-				contigFilter="{MINREADS} 1000 1.0 1.0 2" \
+				contigFilter="{MINREADS} 5000 1.0 .75 {MINREADS}" \
                 || ( >&2 echo " no real assembly" && \
                 mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly && \
                 > {output} )
@@ -253,60 +196,12 @@ rule runAssembly:
         fi
         """
 
-# this is currently not being run, uncooment the input line from assemblyReport, to start running it, and add additional code 
-# to handle it
-rule runFalcon:
-    input:
-        canu = 'group.{n}/{prefix}.assembly/asm.contigs.fasta',
-        reads = 'group.{n}/{prefix}.reads.fasta',
-    output:
-       'group.{n}/{prefix}.assembly/falcon.readme'
-    threads: 16
-    shell:
-        """
-        # if the assembly is empty lets try out falcon, and the reads file is not empty 
-        if [ ! -s  {input.canu} ] && [ -s {input.reads} ]; then
-            
-            make a falcon dir
-            mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly/falcon
-
-            # put the reads in an fofn for falcon
-            echo $(readlink -f {input.reads}) > group.{wildcards.n}/{wildcards.prefix}.assembly/falcon/input.fofn
-            
-            # move into the assembly directory 
-            pushd group.{wildcards.n}/{wildcards.prefix}.assembly/falcon/
-
-            # setup falcon
-            PBS=~mchaisso/projects/PacBioSequencing/scripts
-            BLASR=~mchaisso/projects/blasr-repo/blasr
-            MMAP=~mchaisso/software/minimap
-            MASM=~mchaisso/software/miniasm
-            QUIVER=~mchaisso/software/quiver
-            PBG=~mchaisso/projects/pbgreedyphase
-            
-            # run falcon
-            source ~mchaisso/scripts/setup_falcon.sh && fc_run.py ~mchaisso/projects/PacBioSequencing/scripts/local_assembly/falcon/fc_run.low_cov.cfg
-           
-            # move the assembly into the spot of the other assembly 
-            cp 2-asm-falcon/p_ctg.fa ../asm.contigs.fasta
-
-            popd 
-
-            echo "Falcon Ran" > {output} 
-
-        else
-            # not running falcon
-            echo "Canu worked so falcon did not run" > {output}
-        fi
-        
-        """
 
 # check if the assembly is not size 0
 rule assemblyReport:
     input:  
         oasm= 'group.{n}/{prefix}.assembly/asm.contigs.fasta',
         preads='group.{n}/{prefix}.reads.fasta',
-        #falcon='group.{n}/{prefix}.assembly/falcon.readme'
     output: 
         asm=  'group.{n}/{prefix}.assembly.fasta',
         report='group.{n}/{prefix}.report.txt'
@@ -337,7 +232,7 @@ rule bamFromAssembly:
     output: 
         asmbam= 'group.{n}/{prefix}.assembly.bam',
         asmbas= 'group.{n}/{prefix}.reads.bas.h5'
-    threads: 16
+    threads: 4
     shell:
         """
         if [ ! -s {input.asm} ] 
@@ -361,7 +256,7 @@ rule quiverFromBam:
         asm= 'group.{n}/{prefix}.assembly.fasta'
     output:
         quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-    threads: 16
+    threads: 4
     shell:
         '''
         # check 
@@ -386,125 +281,73 @@ rule quiverFromBam:
 
 
 
+
+
+#--------------------------------------------------------------------------------------------#
+# combines the output assemblies 
+rule combineAsm:
+	input:
+		quiver= expand('group.{ID}/WH.assembly.consensus.fasta', ID=IDS),
+	output: 
+		asmWH='WH.assemblies.fasta',
+	run:
+		collapse = os.path.basename(os.getcwd())
+		rtn = ""
+		counter = 1
+		toAdd = []
+		for asm in sorted( glob.glob("group.*/WH.assembly.consensus.fasta")): 
+			match = re.match( "(group.\d+)/WH.assembly.consensus.fasta", asm)
+			group = match.group(1)
+			print(group)
+			recs = list(SeqIO.parse(asm, "fasta"))
+			for rec in recs:
+				rec.id = "{}_collapse.{}_id.{}".format(group, collapse, counter)
+				rec.name = rec.id
+				rec.seq = rec.seq.strip("N")
+				counter += 1
+				print(rec.id)
+				toAdd.append(rec)
+		#print(rtn)
+		SeqIO.write(toAdd ,output["asmWH"], "fasta" ) 
+
+
+
+#
 #-----------------------------------------------------------------------------------------------------#
 #
-# map back to duplications.fasta to determine the region wiht the highest %ID and 
-# the average %Id acrosss all the regions in the human reference
-# (in the furture I may add soemthing that does this for non quivered files)
-#
 if(os.path.exists("duplications.fasta")):
-	rule newName:
-		input:
-			dup="duplications.fasta",
-		output:
-			dup="duplications.fixed.fasta",
-		run:
-			fixed = ""
-			idx = 1
-			f = open(input["dup"])
-			for line in f:
-				line = line.strip()
-				if(line[0]==">"):
-					line += "\tcopy" + str(idx)
-					idx += 1
-				fixed += line + "\n"
-
-			open(output["dup"], "w+").write(fixed)
-		'''
-		shell:
-			"""
-			awk 'BEGIN{{count=1}}{{if($0~/^>/){{print ">copy"count,$0;count++}}else{{print}}}}' \
-				 < duplications.fasta | sed -e 's/ >chr/\tchr/g' > {output.dup}
-			"""
-		'''
-
-	rule bestMappings:
-		input:
-			dup="duplications.fixed.fasta",
-			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-			preads= 'group.{n}/H2.{prefix}.sam',
-		output:
-			best= 'group.{n}/{prefix}.best.m4',
-			average= 'group.{n}/{prefix}.average.m4',
-			best5= 'group.{n}/{prefix}.best.m5',
-			average5= 'group.{n}/{prefix}.average.m5',
-		shell:
-			"""
-			if [ ! -s {input.quiver} ] 
-			then
-			# create empty files, this will allow other rules to conitnue 
-			> {output.best}
-			> {output.average}
-			> {output.best5}
-			> {output.average5}
-			else
-			{blasr} {input.dup} {input.quiver} -bestn 1 -header -m 4 > {output.average}
-			{blasr} {input.quiver} {input.dup} -bestn 1 -header -m 4 > {output.best}
-			{blasr} {input.dup} {input.quiver} -bestn 1 -m 5 > {output.average5}
-			{blasr} {input.quiver} {input.dup} -bestn 1 -m 5 > {output.best5}
-			fi
-			""" 
-
-	rule mapBackPartition:
-		input:
-			dup="duplications.fixed.fasta",
-			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-			#preads= 'group.{n}/{prefix}.reads.fasta',
-			preads= 'group.{n}/H2.{prefix}.sam',
-		output:
-			psam= 'group.{n}/{prefix}.{n}.sam',
-			pbam= 'group.{n}/{prefix}.{n}.bam',
-		shell:
-			"""
-			if [ ! -s {input.preads} ] 
-			then
-			# create empty files, this will allow other rules to conitnue 
-			> {output.psam}
-			> {output.pbam}
-			else
-			{blasr} {input.preads} {input.dup} -bestn 1 -sam > {output.psam}
-			samtools view -b {output.psam} \
-					| samtools sort -m 4G -o {output.pbam}
-			#samtools view -S -b -o temp.bam {output.psam}
-			#samtools sort -m 4G -o {output.pbam} temp.bam
-			samtools index {output.pbam}
-			#rm temp.bam
-			fi
-			"""
-
 	rule truePSVs:
 		input:
-			dup="duplications.fixed.fasta",
+			dup="duplications.fasta",
 			ref='ref.fasta',
-			cuts='mi.gml.cuts',
-			vcf='assembly.consensus.nucfreq.vcf'
+			cuts='CC/mi.gml.cuts',
+			vcf='snvs/assembly.consensus.nucfreq.vcf'
 		output:
-			truth="truth/README.txt",
-			refsam="refVSdup.sam",
-			refsnv="refVSdup.snv",
-			truthmatrix="truth.matrix"
+			refsam="truth/refVSdup.sam",
+			refsnv="truth/refVSdup.snv",
+			truthmatrix="truth/truth.matrix",
+			sv="truth/refVSdup.SV"
 		shell:
 			"""
 			mkdir -p truth
-			echo "exists" > {output.truth}
 
-			blasr {input.dup} {input.ref} -sam -bestn 1 -clipping soft > {output.refsam} 
+			blasr {input.dup} {input.ref} -sam -bestn 1 -clipping subread > {output.refsam} 
 
 			/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/PrintGaps.py \
-				{input.ref} {output.refsam} --snv {output.refsnv} > refVSdup.SV
+				{input.ref} {output.refsam} --snv {output.refsnv} > {output.sv}
 
 			~mchaisso/projects/AssemblyByPhasing/scripts/utils/CompareRefSNVWithPSV.py \
 				--ref {output.refsnv} --psv {input.cuts} --vcf {input.vcf} \
-				--refFasta {input.ref} --writevcf truth/true > truth.matrix
+				--refFasta {input.ref} --writevcf truth/true > {output.truthmatrix}
 
 			"""
 
 	rule truePSVsWithRefCordinates:
 		input:
-			truth="truth/README.txt",
-			refsnv="refVSdup.snv",
+			refsnv="truth/refVSdup.snv",
 		output:
-			snv = "all_true.snv",
+			truth="truth/README.txt",
+			snv = "truth/all_true.snv",
 		run:
 			# reads snv file into a dictoriry based on positon
 			snvfile = open(input["refsnv"])
@@ -528,155 +371,41 @@ if(os.path.exists("duplications.fasta")):
 				vcf.close()
 			open(output["snv"], "w+").write(truesnvs)
 
-else:
-    rule noMapping:
-        input:
-            quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-            reads= 'group.{n}/H2.{prefix}.sam',
-        output:
-            best= 'group.{n}/{prefix}.best.m4',
-            average= 'group.{n}/{prefix}.average.m4',
-            best5= 'group.{n}/{prefix}.best.m5',
-            average5= 'group.{n}/{prefix}.average.m5',
-        shell:
-            """
-            > {output.average}
-            > {output.best}
-            > {output.best5}
-            > {output.average5}
-            """
-
-    rule noMappingBest:
-        input:
-            quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-            reads= 'group.{n}/H2.{prefix}.sam',
-        output:
-            sam= 'group.{n}/{prefix}.best.sam',
-            bam= 'group.{n}/{prefix}.best.bam',
-            psam= 'group.{n}/{prefix}.{n}.sam',
-            pbam= 'group.{n}/{prefix}.{n}.bam',
-        shell:
-            """
-            > {output.bam}
-            > {output.sam}
-            > {output.pbam}
-            > {output.psam}
-            """
-    
-    rule noTruePSVs:
-        input:
-            ref='ref.fasta',
-            cuts='mi.gml.cuts',
-            vcf='assembly.consensus.nucfreq.vcf'
-        output:
-            truth="truth/README.txt",
-        shell:
-            """
-            mkdir -p truth
-            echo "does not exist" > {output.truth}
-            """
-
-
-
-#-----------------------------------------------------------------------------------------------------#
+			shell('echo "exists" > {output.truth}')
 
 
 
 
-#--------------------------------------------------------------------------------------------# checks to see if the assembly exists and if not removes the empty file if it does not and all other 
-# empty files
-# creats a group output file
-# then creats a empty file singinaling we are done
-# removeing empty files is actually a bad idea with snakemake becuase it will try to re run canu next time, when we know it will jsut fail
-#
-rule removeEmptyAsm:
-    input:
-        # commenting the following line should remove Marks partitioning script from the required assembly
-        #eMark=expand( 'group.{ID}/Mark.best.m4', ID=IDS),
-        eWH=expand( 'group.{ID}/WH.best.m4',   ID=IDS),
-        e5WH=expand( 'group.{ID}/WH.best.m5',   ID=IDS),
-        esam=expand( 'group.{ID}/WH.{ID}.sam',   ID=IDS),
-        ebam=expand( 'group.{ID}/WH.{ID}.bam',   ID=IDS),
-    output: 'removeEmpty'
-    shell:
-        """
-        # removes any empty assemblies we may have created along the way 
-        #find group.*/ -maxdepth 1 -size  0  | xargs -n 1 rm -f 
-        touch {output}
-        """
-
-#cat group.*/Mark.assembly.consensus.fasta > {output.asmMark} || > {output.asmMark}
-rule combineAsm:
-	input:
-		remove='removeEmpty', 
-	output: 
-		asmWH='WH.assemblies.fasta',
-		#asmMark='Mark.assemblies.fasta'
-	run:
-		collapse = os.path.basename(os.getcwd())
-		shell("rm " + input["remove"] )
-		#shell('cat group.*/WH.assembly.consensus.fasta > ' + output["asmWH"])# + ' || > ' + output["asmWH"])
-		rtn = ""
-		counter = 1
-		toAdd = []
-		for asm in sorted( glob.glob("group.*/WH.assembly.consensus.fasta")): 
-			match = re.match( "(group.\d+)/WH.assembly.consensus.fasta", asm)
-			group = match.group(1)
-			print(group)
-			recs = list(SeqIO.parse(asm, "fasta"))
-			for rec in recs:
-				rec.id = "{}_collapse.{}_id.{}".format(group, collapse, counter)
-				rec.name = rec.id
-				rec.seq = rec.seq.strip("N")
-				counter += 1
-				print(rec.id)
-				toAdd.append(rec)
-		#print(rtn)
-		SeqIO.write(toAdd ,output["asmWH"], "fasta" ) 
-
-
-
-#
-# cross match command
-#
-CM = """export PATH=$PATH:/net/eichler/vol2/local/inhousebin
-cross_match -tags -alignments -masklevel 0 -minmatch 50 -bandwidth 250 """
-
-"""-gap_ext -1 -gap_init -10 -penalty -1""" 
-"""#blasr -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}"""
-
-useBlasr=True
-
-if(useBlasr):
 	rule mapToRefAndDupsBlasr:
 		input:	
 			asmWH="WH.assemblies.fasta",
 			ref="ref.fasta",
-			dup="duplications.fixed.fasta",
+			dup="duplications.fasta",
 		output:
-			refsam="WH.sam",
-			dupsam="WH_dup.sam",
+			refsam="asms/WH.sam",
+			dupsam="asms/WH_dup.sam",
 		threads: 8
 		shell:
 			"""
-			{blasr} -nproc {threads} -sam -clipping soft -out /dev/stdout \
+			{blasr} -nproc {threads} -sam -clipping subread -out /dev/stdout \
 				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
 				{input.asmWH} {input.ref} | \
 				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.refsam}
 			
-			{blasr} -nproc {threads} -sam -clipping soft -out /dev/stdout \
+			{blasr} -nproc {threads} -sam -clipping subread -out /dev/stdout \
 				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
 				{input.asmWH} {input.dup} | \
 				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
 			
 			"""
+
 	rule getTablesFromSam:
 		input:
-			refsam="WH.sam",
-			dupsam="WH_dup.sam",
+			refsam="asms/WH.sam",
+			dupsam="asms/WH_dup.sam",
 		output:
-			dup="WH_dup.tsv",
-			ref="WH.tsv",
+			dup="asms/WH_dup.tsv",
+			ref="asms/WH.tsv",
 		shell:
 			"""
 			~mvollger/projects/utility/samIdentity.py --header {input.refsam} > {output.ref}
@@ -684,101 +413,103 @@ if(useBlasr):
 			"""
 
 
-else:
-	rule map_asms_to_ref:
+
+	rule depthOnDuplications:
 		input:
-			asmWH="WH.assemblies.fasta",
-			ref="ref.fasta"
+			reads="reads.fasta",
+			ref = "duplications.fasta",
 		output:
-			cm="WH.cm",
+			bam = "asms/reads.dup.bam",
+			depth="asms/dup_depth.tsv",
+		threads:8
 		shell:
 			"""
-			{CM} {input.asmWH} {input.ref}  > {output.cm}
+			{blasr} -sam  \
+					-nproc {threads} -out /dev/stdout \
+					-minAlignLength 500 -preserveReadTitle -clipping subread \
+					{input.reads} {input.ref} | \
+					samtools view -bSh -F 4 - | \
+					samtools sort -T tmp -o {output.bam}
+			
+			samtools depth -aa {output.bam} > {output.depth}
 			"""
 
-	#blasr -bestn 1 -sam -clipping soft {input.asmWH} {input.ref} -out {output.blasr}
-	#{CM} {input.asmWH} {input.ref}  > {output.cm}
-	rule map_asms_to_duplicaitons:
+
+	rule plot_seqs_on_dup:
 		input:
-			asmWH="WH.assemblies.fasta",
-			ref="duplications.fixed.fasta"
+			depth="asms/dup_depth.tsv",
+			sam="asms/WH_dup.sam"
 		output:
-			#cm="WH_dup.cm",
-			#blasr="WH_dup.blasr.sam",
-			#{CM} {input.asmWH} {input.ref}  > {output.cm}
-			blast="WH_dup.blast",
-		threads: 8
+			plot = "SeqsOnDup.png",
 		shell:
 			"""
-			blatdb="~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta.2bit"		
-			# for a blast alignmnet 
-			source ~mvollger/projects/builds/anaconda/activateConda3.sh
-			blastn -task megablast \
-					-db ~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta \
-					-query {input.asmWH} \
-					-out {output.blast} \
-					-word_size 50 \
-					-parse_deflines \
-					-num_threads {threads} \
-					-num_alignments 1 \
-					-outfmt "7 score sstrand qseqid sseqid pident slen qlen length qcovhsp qcovs nident mismatch gapopen qstart qend sstart send evalue bitscore qseq sseq"
-					#-max_target_seqs 1 \
-					#-max_hsps 1 \
-				
+			module purge
+			. /etc/profile.d/modules.sh
+			module load modules modules-init modules-gs/prod modules-eichler
+			module load anaconda/20161130
+			{utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
 			"""
+
+
+
 	#
-	rule map_asms_to_ref_convert:
+	# runs a summary script that just consilidates some data, which is later sued in plotting
+	#
+	rule summary:
 		input:
-			cm="WH.cm",
+			bed="ref.fasta.bed",
+			plot = "SeqsOnDup.png",
+			combine='WH.assemblies.fasta',
+			truth="truth/README.txt",
+			tsv="asms/WH_dup.tsv",
+			truthmatrix="truth/truth.matrix",
 		output:
-			sam="WH.sam",
-			tsv="WH.tsv",
+			summary="summary.txt",
+			table="abp.table.tsv",
 		shell:
 			"""
-			# the sam pipe excludes none primary alignmnets 
-			~mvollger/projects/cmpSeq/cmToSam.py {input.cm} | samtools view -h -F 256 >  {output.sam}
-			~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
+			{base2}/summary.py
+			overlapOfReadsCheck.py "group.*/H2.WH.sam" > read_collision.txt
 			"""
 
-	rule map_asms_to_duplicaitons_convert:
+		
+	#
+	#
+	#
+	rule bedForTrack:
 		input:
-			blast="WH_dup.blast",
-			#cm="WH_dup.cm",
+			bedx="ref.fasta.bed",
+			table="abp.table.tsv",
+			summary="summary.txt",
+			truthmatrix="truth/truth.matrix",
 		output:
-			sam="WH_dup.sam",
-			tsv="WH_dup.tsv",
+			asmbed="asm.bed",
+		params:
+			project=config["project"],
 		shell:
 			"""
-			~mvollger/projects/cmpSeq/cmToSam.py --blast {input.blast} | \
-					samtools view -h -F 256 >  {output.sam}
-			~mvollger/projects/utility/samIdentity.py --header {output.sam} > {output.tsv}
+			bedForABP.py {input.table} {params.project}
 			"""
 
+else:
+	rule noDuplicaitonsFasta:
+		input:
+			ref='ref.fasta',
+		output:
+			truth="truth/README.txt",
+			asmbed="asm.bed",
+		shell:
+			"""
+			mkdir -p truth
+			echo "does not exist" > {output.truth}
+			touch {output.asmbed}
+			"""
+#-----------------------------------------------------------------------------------------------------#
 
 
 
-rule plot_seqs_on_dup:
-    input:
-        depth="dup_depth.tsv",
-        sam="WH_dup.sam"
-    output:
-        "seqsOnDup.png",
-    shell:
-        """
-        {utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
-        """
-'''
-rule plot_seqs_on_cov:
-    input:
-        depth="depth.tsv",
-        sam="WH.sam",
-    output:
-        "seqs.png",
-    shell:
-        """
-        {utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
-        """
-'''
+
+
 
 #
 # create a map of the coverage across the assembled duplications
@@ -789,14 +520,14 @@ rule coverageOnAsms:
 		ref = "ref.fasta",
 		reads = "reads.fasta",
 	output:
-		cov="asm_depth.tsv",
-		bam="reads_on_asm.bam",
-		refWH="refAndWH.fasta",
+		cov="asms/asm_depth.tsv",
+		bam="asms/reads_on_asm.bam",
+		refWH="asms/refAndWH.fasta",
 	threads:8
 	shell:
 		"""
-		cat {input.ref} {input.asm} > refAndWH.fasta
-		{blasr} {input.reads} refAndWH.fasta -clipping soft \
+		cat {input.ref} {input.asm} > {output.refWH}
+		{blasr} {input.reads} {output.refWH} -clipping subread \
 				-nproc {threads} -bestn 1 -sam -out /dev/stdout | \
 				samtools view -bS - | \
 				samtools sort -m 4G -o {output.bam} - 
@@ -806,45 +537,16 @@ rule coverageOnAsms:
 
 rule plotCovOnAsm:
 	input:
-		cov="asm_depth.tsv",
+		cov="asms/asm_depth.tsv",
 	output:
 		plot="CoverageOnAsm.png",
 	shell:
 		"""
+		module purge
+		. /etc/profile.d/modules.sh
+		module load modules modules-init modules-gs/prod modules-eichler
+		module load anaconda/20161130
 		{utils}/plotDepth.py {input.cov} {output.plot}
-		"""
-
-#
-# runs a summary script that just consilidates some data, which is later sued in plotting
-#
-rule summary:
-	input:
-		bed="ref.fasta.bed",
-		combine='WH.assemblies.fasta',
-		truth="truth/README.txt",
-		tsv="WH_dup.tsv",
-	output:
-		summary="summary.txt",
-		table="abp.table.tsv",
-	shell:
-		"""
-		{base2}/summary.py
-		"""
-#
-#
-#
-rule bedForTrack:
-	input:
-		bedx="ref.fasta.bed",
-		table="abp.table.tsv",
-		summary="summary.txt",
-	output:
-		asmbed="asm.bed",
-	params:
-		project=config["project"],
-	shell:
-		"""
-		bedForABP.py {input.table} {params.project}
 		"""
 
 #
@@ -852,39 +554,26 @@ rule bedForTrack:
 #
 rule miropeats:
 	input:
-		refWH="refAndWH.fasta",
+		refWH="asms/refAndWH.fasta",
 	output:
-		miro = "refWH.miro.pdf",
+		miro = "asms/refWH.miro.pdf",
 	shell:
 		"""
-		miropeats -s 500 -onlyinter {input.refWH} > contig_compare
+		miropeats -s 500 -onlyinter {input.refWH} 
 		if [ -f threshold500 ]
 		then
-			mv threshold500 refWH.miro.ps
-			ps2pdf refWH.miro.ps
+			mv threshold500 temp.ps
+			ps2pdf temp.ps {output.miro}
+			rm temp.ps
 		else
 			touch {output.miro}
 		fi
 		
 		"""
-# pdf='mi.cuts.gml.pdf',
-rule final:
-	input:
-		combine='WH.assemblies.fasta',
-		miro = "refWH.miro.pdf",
-		plot="CoverageOnAsm.png",
-		summary="summary.txt",
-		truth="truth/README.txt",
-		#seqPNG="seqs.png",
-		dupPND="seqsOnDup.png",
-		asmbed="asm.bed",
-		plotReal="SeqsOnReal.png",
-		snv = "all_true.snv",
-	output: 'PSV2_done'
-	shell:
-		"""
-		touch {output}
-		"""
+
+
+
+
 
 
 #-----------------------------------------------------------------------------------------------------#
@@ -895,20 +584,14 @@ if(os.path.exists("real.fasta")):
 			ref = "real.fasta",
 			reads = "reads.fofn",
 		output:
-			cov="real_depth.tsv",
-			bam="reads_on_real.bam",
+			cov="real/real_depth.tsv",
+			bam="real/reads_on_real.bam",
 		threads:16
 		shell:
 			"""
-			{blasr} {input.reads} {input.ref} -bestn 1 -clipping soft -nproc {threads} -sam -out /dev/stdout \
+			{blasr} {input.reads} {input.ref} -bestn 1 -clipping subread -nproc {threads} -sam -out /dev/stdout \
 					| samtools view -bS -F 4 - | \
 					samtools sort -m 4G -o {output.bam} - 
-			
-			#source /net/eichler/vol24/projects/sequencing/pacbio/software/smrtanalysis/current/etc/setup.sh \
-			#		&& /net/eichler/vol24/projects/sequencing/pacbio/smrt-link/smrtcmds/bin/pbalign \
-			#		{input.reads} {input.ref} {output.bam} \
-			#		--nproc {threads} --algorithmOptions="--minRawSubreadScore 800 --bestn 1"
-			
 			samtools index {output.bam}
 			samtools depth -aa {output.bam} > {output.cov}
 			"""
@@ -917,24 +600,26 @@ if(os.path.exists("real.fasta")):
 			asmWH="WH.assemblies.fasta",
 			ref="real.fasta"
 		output:
-			WHm5="real.m5",
-			sam="real.sam",
+			WHm5="real/real.m5",
+			sam="real/real.sam",
 		shell:
 			"""
 			{blasr} -m 5 -bestn 1 -out {output.WHm5} {input.asmWH} {input.ref}
-			{blasr} -m 5 -bestn 1 -sam -clipping soft -out {output.sam} {input.asmWH} {input.ref}
+			{blasr} -m 5 -bestn 1 -sam -clipping subread -out {output.sam} {input.asmWH} {input.ref}
 			"""
 
 
 	rule plotCovOnReal:
 		input:
-			cov="real_depth.tsv",
-			sam="real.sam",
+			cov="real/real_depth.tsv",
+			sam="real/real.sam",
 		output:
-			plot="SeqsOnReal.png",
+			plot="real/SeqsOnReal.png",
+			done="real/done.txt",
 		shell:
 			"""
 			{utils}/plotDepth.py {input.cov} {output.plot} --sam {input.sam}
+			touch {output.done}
 			"""
 
 else:
@@ -942,11 +627,31 @@ else:
 		input:
 			asmWH="WH.assemblies.fasta",
 		output:
-			plot="SeqsOnReal.png",
+			done="real/done.txt",
 		shell:
 			"""
-			touch {output.plot}
+			touch {output.done}
 			"""
+#-----------------------------------------------------------------------------------------------------#
+
+
+
+
+
+rule final:
+	input:
+		combine='WH.assemblies.fasta',
+		miro = "asms/refWH.miro.pdf",
+		plot="CoverageOnAsm.png",
+		truth="truth/README.txt",
+		asmbed="asm.bed",
+		done="real/done.txt",
+	output: 'PSV2_done'
+	shell:
+		"""
+		touch {output}
+		"""
+
 
 
     
