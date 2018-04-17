@@ -1,0 +1,4 @@
+#!/net/gs/vol3/software/modules-sw/python/2.7.3/Linux/RHEL6/x86_64/bin/python
+# EASY-INSTALL-SCRIPT: 'Cython==0.19.1','cygdb'
+__requires__ = 'Cython==0.19.1'
+__import__('pkg_resources').run_script('Cython==0.19.1', 'cygdb')

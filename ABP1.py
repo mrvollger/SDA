@@ -3,48 +3,35 @@ import glob
 from Bio import SeqIO
 import re
 
-SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
+snake_dir = os.path.dirname(workflow.snakefile)
+print(snake_dir)
 
 shell.executable("/bin/bash")
-#shell.prefix("source %s/env_PSV.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_PSV.cfg; " % SNAKEMAKE_DIR)
+#shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
+shell.prefix("source %s/env_python2.cfg; " % SNAKEMAKE_DIR)
 
-"""
-Dependencies: should be taken care of by loading the env_PSV.cfg file
-Requires a file called reads.orig.bam, ref.fasta should also be there, and it will take advantage 
-of duplications.fasta, if it is there, also a config file called coverage.json
-"""
-# now in the config file
-blasrDir = '~mchaisso/projects/blasr-repo/blasr'
-scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
-#scriptsDir = '~mvollger/projects/abp_repo/abp/abp'
-#base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
-base2="/net/eichler/vol2/home/mvollger/projects/abp"
-utils="/net/eichler/vol2/home/mvollger/projects/utility"
-
-
-sanke_dir = os.path.dirname(workflow.snakefile)
-print(snake_dir)
+#
+# script locations and configurations 
+#
 configFile = "abp.config.json"
-configFile2 = snake_dir + "abp.config.json"
-if(os.path.exists(configFile)):
-	configfile:
-		configFile	
-	MINCOV=config["MINCOV"]
-	MAXCOV=config["MAXCOV"]
-	MINTOTAL=config["MINTOTAL"]
-	blasr = config["blasr"]
+configfile:
+	configFile	
 
-elif(os.path.exists(configFile2)):
-	configfile:
-		configFile2	
-	MINCOV=config["MINCOV"]
-	MAXCOV=config["MAXCOV"]
-	MINTOTAL=config["MINTOTAL"]
-	blasr = config["blasr"]
+MINCOV=config["MINCOV"]
+MAXCOV=config["MAXCOV"]
+MINTOTAL=config["MINTOTAL"]
 
 blasr = snake_dir + "software/blasr/bin/blasr"
 blasr43 = snake_dir + "software/blasr/bin/blasr43"
+samtobas = snake_dir + "software/blasr/bin/samtobas"
+quiver = snake_dir + "software/quiver/quiver"
+quiver_source = snake_dir + "software/quiver/setup_quiver.sh"
+base = snake_dir + "scripts/"
+scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
+#
+#
+#
+
 
 print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
@@ -69,7 +56,7 @@ if(os.path.exists("reads.orig.bam")):
 		output:
 			'reads.bas.h5'
 		shell:
-			'samtools view -h {input} | {blasrDir}/pbihdfutils/bin/samtobas /dev/stdin {output}'
+			'samtools view -h {input} | {samtobas} /dev/stdin {output}'
 
 	rule realign_reads:
 		input:
@@ -336,7 +323,7 @@ else:
 			"""
 
 			'''
-            {base2}/categorize.sh {input} {output}
+            {base}/categorize.sh {input} {output}
             '''
 
 

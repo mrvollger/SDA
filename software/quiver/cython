@@ -1,0 +1,10 @@
+#!/net/gs/vol3/software/modules-sw/python/2.7.3/Linux/RHEL6/x86_64/bin/python
+# EASY-INSTALL-ENTRY-SCRIPT: 'Cython==0.19.1','console_scripts','cython'
+__requires__ = 'Cython==0.19.1'
+import sys
+from pkg_resources import load_entry_point
+
+if __name__ == '__main__':
+    sys.exit(
+        load_entry_point('Cython==0.19.1', 'console_scripts', 'cython')()
+    )
