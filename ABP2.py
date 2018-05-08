@@ -4,28 +4,30 @@ import re
 from Bio import SeqIO
 import re
 
-SNAKEMAKE_DIR= os.path.dirname(workflow.snakefile)
 
+snake_dir = os.path.dirname(workflow.snakefile)+"/"
 shell.executable("/bin/bash")
-#shell.prefix("source %s/env_PSV.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_PSV.cfg; set -eo pipefail" % SNAKEMAKE_DIR)
-#shell.suffix("2> /dev/null")
+shell.prefix("source {}/env_python2.cfg; ".format(snake_dir))
 
-#blasr= '~mchaisso/projects/AssemblyByPhasing/scripts/abp/bin/blasr'
-blasrDir= '~mchaisso/projects/blasr-repo/blasr'
-scriptsDir= '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
-#base2="/net/eichler/vol21/projects/bac_assembly/nobackups/scripts"
-base2="/net/eichler/vol2/home/mvollger/projects/abp"
-utils="/net/eichler/vol2/home/mvollger/projects/utility"
-PBS="/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts" 
-# Canu 1.5 seems to have muchhhh better performance over canu 1.6
-CANU_DIR="/net/eichler/vol5/home/mchaisso/software/canu/Linux-amd64/bin"
-#CANU_DIR="/net/eichler/vol21/projects/bac_assembly/nobackups/canu/Linux-amd64/bin"
-#CANU_DIR="/net/eichler/vol2/home/mvollger/projects/builds/canu/Linux-amd64/bin"
+#
+# script locations and configurations 
+#
+blasr = snake_dir + "software/blasr/bin/blasr"
+blasr43 = snake_dir + "software/blasr/bin/blasr43"
+samtobas = snake_dir + "software/blasr/bin/samtobas"
+quiver = snake_dir + "software/quiver/quiver"
+quiver_source = snake_dir + "software/quiver/setup_quiver.sh"
+base = snake_dir + "scripts/"
+scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
+python3 = snake_dir + "env_python3.cfg"
+python2 = snake_dir + "env_python2.cfg"
+CANU_DIR=snake_dir + "software/canu/Linux-amd64/bin"
+#
+#
+#
 
 configfile:
 	"abp.config.json"	
-blasr = config["blasr"]
 # min cov is used to detemrine the filter for getting rid of low read assemblies. 
 MINREADS = int(config["MINCOV"]*1.0/2.0)
 
@@ -39,8 +41,8 @@ for group in groups:
 
 
 rule all:
-    input: "PSV2_done"
-    message: "Running PSV2"
+	input: "final",
+	message: "Running ABP2"
 
 
 # global wild card constraint on n whihc is the group idenitifier
@@ -81,8 +83,8 @@ rule phasedVCF:
     output: 'group.{n}/phased.{n}.vcf'
     shell:
         """
-        source {base2}/env_whatshap.cfg 
-        {base2}/fixVCF.py --out {output} --vcf {input.vcf}
+		source {python3}
+		{base}/fixVCF.py --out {output} --vcf {input.vcf}
         """
 
 # whatshap requires unique bam entries, make those
@@ -92,8 +94,8 @@ rule bamForWhatsHap:
     output: 'reads.sample.bam'
     shell:
         """
-        source {base2}/env_whatshap.cfg 
-        {base2}/changeBamName.py
+		source {python3}
+        {base}/changeBamName.py
         """
 
 # index reads.sample.bam
@@ -102,7 +104,6 @@ rule indexWhatshapReads:
     output: 'reads.sample.bam.bai',
     shell:
         """
-        echo {output}
         samtools index {input}
         """ 
 
@@ -118,16 +119,10 @@ rule whatsHap:
         hapH2= 'group.{n}/H2.WH.sam'
     shell:
         """
-        source {base2}/env_whatshap.cfg 
-        #whatshap haplotag -o  {output.hap} --reference ref.fasta {input.hapvcf} {input.hapbam} 
-        # the above is probably a bad idea, it causes a lot more reads to exist in more than one haplotype 
+		source {python3}
 		whatshap haplotag -o  {output.hap} {input.hapvcf} {input.hapbam} 
         samtools view -h -o - {output.hap} | grep -E "^@|HP:i:1" >  {output.hapH1} 
         samtools view -h -o - {output.hap} | grep -E "^@|HP:i:2" >  {output.hapH2}
-		
-		
-		# this check how much overlap there is of reads between groups  
-		# overlapOfReadsCheck.py "group.*/H2.WH.sam" > read_collision.txt
         """
 #-----------------------------------------------------------------------------------------------------#
 
@@ -148,13 +143,13 @@ rule readsFromSam:
         pfasta= 'group.{n}/{prefix}.reads.fasta'
     shell:
         """
-        grep -v "^@" {input.H2} > group.{wildcards.n}/{wildcards.prefix}.temp.txt \
+		grep -v "^@" {input.H2} > group.{wildcards.n}/{wildcards.prefix}.temp.txt \
 			|| touch group.{wildcards.n}/{wildcards.prefix}.temp.txt
 
 		if [ -s group.{wildcards.n}/{wildcards.prefix}.temp.txt ]; then
-           cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {PBS}/local_assembly/StreamSamToFasta.py | \
-               ~mchaisso/projects/PacBioSequencing/scripts/falcon/FormatFasta.py --fakename  > \
-				{output.pfasta};
+			cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {base}/StreamSamToFasta.py | \
+					{base}/FormatFasta.py --fakename  > \
+					{output.pfasta};
         else
             >&2 echo " no real assembly"
             touch {output.pfasta};
@@ -174,7 +169,8 @@ rule runAssembly:
 		rm -rf group.{wildcards.n}/{wildcards.prefix}.assembly/*
 
         if [ -s {input} ]; then
-            module load java/8u25 && {CANU_DIR}/canu -pacbio-raw {input} \
+            #module load java/8u25 && {CANU_DIR}/canu -pacbio-raw {input} 
+            canu -pacbio-raw {input} \
 				genomeSize=60000 \
 				corOutCoverage=300 \
 				corMhapSensitivity=high \
@@ -213,8 +209,8 @@ rule assemblyReport:
 	        echo "Number of reads " > {output.report}
 	        grep -c ">" {input.preads} >> {output.report}
 	        echo "Assembly number of contigs" >> {output.report}
-	        module load numpy/latest; ~mchaisso/software/mcsrc/UTILS/pcl {input.preads} \
-                    | ~mchaisso/scripts/stats.py >> {output.report}
+	        module load numpy/latest; {base}/pcl {input.preads} \
+                    | {base}/stats.py >> {output.report}
 	        rm -rf templocal
         else
             touch {output.asm}
@@ -241,7 +237,7 @@ rule bamFromAssembly:
 		    > {output.asmbam}
             > {output.asmbas}
         else 
-            ~mchaisso/projects/blasr-repo/blasr/pbihdfutils/bin/samtobas {input.H2} {output.asmbas} -defaultToP6
+			{samtobas} {input.H2} {output.asmbas} -defaultToP6
 			{blasr} {output.asmbas} {input.asm} \
                 -clipping subread -sam -bestn 1 -out /dev/stdout  -nproc {threads} \
                 | samtools view -bS - | samtools sort -m 4G -T tmp -o {output.asmbam}
@@ -266,7 +262,7 @@ rule quiverFromBam:
 		    > {output.quiver}
         else
             samtools faidx {input.asm}
-	        source ~mchaisso/software/quiver/setup_quiver.sh; ~mchaisso/software/quiver/bin/quiver \
+	        source {quiver_source}; {quiver} \
 		        --noEvidenceConsensusCall nocall --minCoverage 10 -j {threads} \
 		        -r {input.asm} -o {output.quiver} {input.asmbam}
             
@@ -289,7 +285,7 @@ rule combineAsm:
 	input:
 		quiver= expand('group.{ID}/WH.assembly.consensus.fasta', ID=IDS),
 	output: 
-		asmWH='WH.assemblies.fasta',
+		asmWH='WH.assemblies.pre.pilon.fasta',
 	run:
 		collapse = os.path.basename(os.getcwd())
 		rtn = ""
@@ -309,7 +305,105 @@ rule combineAsm:
 				toAdd.append(rec)
 		#print(rtn)
 		SeqIO.write(toAdd ,output["asmWH"], "fasta" ) 
+		
+		# remove extra files from assemblies, this speeds up the dag building for snakemake by a lot
+		shell("""rm -rf \
+				group.*/WH.assembly/canu-logs \
+				group.*/WH.assembly/canu-scripts \
+				group.*/WH.assembly/correction \
+				group.*/WH.assembly/correction.html.files \
+				group.*/WH.assembly/trimming \
+				group.*/WH.assembly/trimming.html.files \
+				group.*/WH.assembly/unitigging \
+				group.*/WH.assembly/unitigging.html.files """)
 
+
+
+
+
+# this needs more work to actually imporve thigns... right now it fixes nothing,
+# need to use something not pilon. 
+if(os.path.exists("illumina.orig.bam")):
+	rule fastqIllumina:
+		input:
+			bam = "illumina.orig.bam",
+		output:
+			fastq = "illumina.fastq",
+		shell:
+			"""
+			source {python3}
+			samtools bam2fq {input.bam} > {output.fastq}
+			"""
+
+	rule indexForBWA:
+		input:
+			asm='WH.assemblies.pre.pilon.fasta',
+		output:
+			amb = "bwa/bwa.amb",
+			ann = "bwa/bwa.ann",
+			bwt = "bwa/bwa.bwt",
+			pac = "bwa/bwa.pac",
+			sa = "bwa/bwa.sa",
+		shell:
+			"""
+			mkdir -p bwa
+			bwa index -p bwa/bwa -a bwtsw {input.asm}
+			"""
+
+	rule reMapIllumina:
+		input:
+			fastq = "illumina.fastq",
+			asmWH='WH.assemblies.pre.pilon.fasta',
+			amb = "bwa/bwa.amb",
+			ann = "bwa/bwa.ann",
+			bwt = "bwa/bwa.bwt",
+			pac = "bwa/bwa.pac",
+			sa = "bwa/bwa.sa", 
+		output:
+			bam = "illumina.bam",
+		threads: 8
+		shell:
+			"""
+			source {python3}
+			bwa mem -M -t {threads} -p bwa/bwa {input.fastq} | \
+					samtools view -bS - | \
+					samtools sort - -o {output.bam}
+			"""
+			
+	rule runPilon:
+		input:
+			asmWH='WH.assemblies.pre.pilon.fasta',
+			bam = "illumina.bam",
+		output:
+			asmWH = "WH.assemblies.fasta",
+			bai = "illumina.bam.bai",
+		threads: 8
+		shell:
+			"""
+			samtools index {input.bam}
+			mkdir -p pilon_out
+			ls {snake_dir}software/pilon/pilon-1.22.jar
+			java -Xmx4G -jar {snake_dir}software/pilon/pilon-1.22.jar \
+					--threads {threads} \
+					--genome {input.asmWH} \
+					--bam {input.bam} \
+					--outdir pilon_out \
+					--fix "indels" \
+					--changes --vcf --tracks \
+					--duplicates 
+			cp pilon_out/pilon.fasta {output.asmWH}
+			"""
+
+else:
+	rule copyToEnd:
+		input:
+			asmWH='WH.assemblies.pre.pilon.fasta',
+		output:
+			asmWH = "WH.assemblies.fasta",
+		shell:
+			"""
+			cp {input.asmWH} {output.asmWH}
+			"""
 
 
 #
@@ -331,12 +425,14 @@ if(os.path.exists("duplications.fasta")):
 			"""
 			mkdir -p truth
 
-			blasr {input.dup} {input.ref} -sam -bestn 1 -clipping subread > {output.refsam} 
+			{blasr43} {input.dup} {input.ref} -sam -bestn 1 -clipping subread > {output.refsam} 
 
-			/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/PrintGaps.py \
+			source {python2}
+
+			{base}/PrintGaps.py \
 				{input.ref} {output.refsam} --snv {output.refsnv} > {output.sv}
 
-			~mchaisso/projects/AssemblyByPhasing/scripts/utils/CompareRefSNVWithPSV.py \
+			{base}/CompareRefSNVWithPSV.py \
 				--ref {output.refsnv} --psv {input.cuts} --vcf {input.vcf} \
 				--refFasta {input.ref} --writevcf truth/true > {output.truthmatrix}
 
@@ -408,6 +504,7 @@ if(os.path.exists("duplications.fasta")):
 			ref="asms/WH.tsv",
 		shell:
 			"""
+			source {python3}
 			~mvollger/projects/utility/samIdentity.py --header {input.refsam} > {output.ref}
 			~mvollger/projects/utility/samIdentity.py --header {input.dupsam} > {output.dup}
 			"""
@@ -443,11 +540,8 @@ if(os.path.exists("duplications.fasta")):
 			plot = "SeqsOnDup.png",
 		shell:
 			"""
-			module purge
-			. /etc/profile.d/modules.sh
-			module load modules modules-init modules-gs/prod modules-eichler
-			module load anaconda/20161130
-			{utils}/plotDepth.py {input.depth} {output} --sam {input.sam}
+			source {python3}
+			{base}/plotDepth.py {input.depth} {output} --sam {input.sam}
 			"""
 
 
@@ -468,8 +562,9 @@ if(os.path.exists("duplications.fasta")):
 			table="abp.table.tsv",
 		shell:
 			"""
-			{base2}/summary.py
-			overlapOfReadsCheck.py "group.*/H2.WH.sam" > read_collision.txt
+			source {python3}
+			{base}/summary.py
+			{base}/overlapOfReadsCheck.py "group.*/H2.WH.sam" > read_collision.txt
 			"""
 
 		
@@ -488,7 +583,7 @@ if(os.path.exists("duplications.fasta")):
 			project=config["project"],
 		shell:
 			"""
-			bedForABP.py {input.table} {params.project}
+			{base}/bedForABP.py {input.table} {params.project}
 			"""
 
 else:
@@ -542,11 +637,8 @@ rule plotCovOnAsm:
 		plot="CoverageOnAsm.png",
 	shell:
 		"""
-		module purge
-		. /etc/profile.d/modules.sh
-		module load modules modules-init modules-gs/prod modules-eichler
-		module load anaconda/20161130
-		{utils}/plotDepth.py {input.cov} {output.plot}
+		source {python3}
+		{base}/plotDepth.py {input.cov} {output.plot}
 		"""
 
 #
@@ -646,7 +738,7 @@ rule final:
 		truth="truth/README.txt",
 		asmbed="asm.bed",
 		done="real/done.txt",
-	output: 'PSV2_done'
+	output: 'final'
 	shell:
 		"""
 		touch {output}

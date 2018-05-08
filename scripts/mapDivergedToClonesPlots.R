@@ -14,9 +14,9 @@ script.dir <- dirname(sys.frame(1)$ofile)
 setwd(script.dir)
 source("ggplot_theme.R")
 
-genome = "Mitchell_CHM1_V2"
 genome = "Yoruban_feb_2018"
 genome = "CHM13"
+genome = "Mitchell_CHM1_V2"
 
 
 asmdir = sprintf("~/Desktop/data/genomeWide/%s/LocalAssemblies/", genome)
@@ -48,7 +48,7 @@ geneRegex
 
 m=1
 h=15*m
-w=30*m
+w=35*m
 #
 # function to save plots 
 #
@@ -77,19 +77,7 @@ sum(mapped$validated)
 
 
 
-bot = 95
-top = 100
 
-plots = list()
-plots[[1]] =  ggplot(mapped) + geom_point(aes(length, clonePerID, color=validated)) 
-
-plots[[2]] = ggplot(mapped) + geom_point(aes(referenceLength, referencePerID, color=validated))
-  #coord_cartesian( ylim = c(bot,top)) 
-
-plots[[3]] = ggplot(mapped) + geom_point(aes(referencePerID, clonePerID, color = validated)) +
-  coord_cartesian(xlim=c(bot,top), ylim = c(bot,top)) +
-  geom_abline(intercept = 0, slope = 1)
-  
 
 validated = mapped[mapped$validated,]
 file2 = paste0(asmdir, "betterBlasrMap/validated.genes.bed")
@@ -120,80 +108,90 @@ for(i in 1:length(valGenes$Gene)){
   }
 }
 
+
+textSize = 60
+theme_set(theme_classic(base_size = textSize))
+
 valGenes$ID
 mysize = 3
-plots[[4]] = ggplot(valGenes) +
-  geom_segment(aes(x=referenceLength, xend=length, y=referencePerID, yend=clonePerID), alpha = 0.25, color="blue") +
-  geom_point(aes(x=referenceLength, y=referencePerID), color=col2[[1]], size=mysize) +
-  geom_point(aes(x=length, y=clonePerID), color=col2[[2]], size=mysize) +
-  geom_label_repel(aes(x=referenceLength, y=referencePerID, label=ID), 
-                  size=mysize, color="black", fontface="bold", 
+start = round( min(valGenes$referenceLength, valGenes$query_length)/1000 ) -1
+valGenes2 = valGenes[!is.na(valGenes$ID),] 
+valGenes2$shortGene = gsub(",.*","", valGenes2$GeneShow)
+valGenes2$key = paste(paste(valGenes2$ID, valGenes2$shortGene, sep = "\t\t"), round(valGenes2$perID_by_matches,2), sep = "\t\t")
+
+
+
+
+bot = max(95, min(valGenes2$referencePerID) -.5)
+top = 100
+
+
+
+
+
+
+
+plots = list()
+plots[[1]] =  ggplot(mapped) + geom_point(aes(length, clonePerID, color=validated)) 
+
+plots[[2]] = ggplot(mapped) + geom_point(aes(referenceLength, referencePerID, color=validated))
+#coord_cartesian( ylim = c(bot,top)) 
+
+plots[[3]] = ggplot(mapped) + geom_point(aes(referencePerID, clonePerID, color = validated)) +
+  coord_cartesian(xlim=c(bot,top), ylim = c(bot,top)) +
+  geom_abline(intercept = 0, slope = 1)
+
+
+
+
+
+
+
+
+
+
+plots[[4]] = ggplot() +
+  geom_segment(data=valGenes, aes(x=referenceLength, xend=length, y=referencePerID, yend=clonePerID), alpha = 0.25, color="blue") +
+  geom_point(data=valGenes, aes(x=referenceLength, y=referencePerID), color=col2[[1]], size=mysize) +
+  geom_point(data=valGenes, aes(x=length, y=clonePerID), color=col2[[2]], size=mysize) +
+  geom_label_repel(data=valGenes2, aes(x=referenceLength, y=referencePerID, label=ID),
+                  size=mysize, fontface="bold" ,#color="black",
                   arrow = arrow(length = unit(0.005, 'npc')),
                   point.padding = .25,
                   box.padding = .5,
                   #ylim=c(NA, 99.8),
+                  #show.legend = T, 
                   segment.size = 0.5) +
-  xlab("Alignmnet Length (bp)") +
+  geom_point(data=valGenes2, aes(x=0,y=0, fill=key), shape=32)+
+  scale_fill_discrete(breaks = valGenes2$key[order(as.numeric(valGenes2$ID))]) +
+  scale_x_continuous(breaks=c(start,50,100,150,200)*1000, labels = c(start,50,100,150,200))+
+  xlab("Alignment Length (kb)") +
   ylab("Percent Identity") +
-  coord_cartesian(ylim = c(bot+2.3,top)) 
+  coord_cartesian(ylim = c(bot,top), xlim = c(start,150)*1000 )  +
+  theme_classic() + theme(legend.position = "right",
+                          legend.key.size = unit(1,"cm"), legend.box.just="left", legend.title=element_blank(), axis.title = element_text(face="bold")) 
 
-
-for(i in 1:length(plots)){
-  plots[[i]] = plots[[i]] + theme_classic() + 
-    scale_x_continuous(labels = comma) + 
-    scale_color_manual(values=col2) +
-    theme(plot.margin=unit(c(1,1,1,1),"cm"))
-  fname = paste0(plotsdir, paste0(i, ".all.pdf"))
-  #mysave(fname, plots[[i]])
-}
-
-
-show = valGenes[!is.na(valGenes$ID), c("ID", "Gene", "clonePerID")]
-show$clonePerID = format(round(show$clonePerID, 2), nsmall = 2)
-names(show) <- c("Label", "Gene(s)", "% ID")
-# Set theme to allow for plotmath expressions
-
-mycolors = c( rep("#FFFFFF", maxShownGenes), rep("#e9e9e9", max(counter - maxShownGenes,0) ))
-tsize = 0.3
-tt <- gridExtra::ttheme_minimal(
-    core = list(fg_params=list(cex = tsize, parse=T), 
-                bg_params = list(fill=mycolors  )),
-    colhead = list(fg_params=list(cex = tsize, parse=T)))#,
-    #rowhead = list(fg_params=list(cex = tsize)))
-#tt <- ttheme_default(colhead=list(fg_params = list(parse=TRUE)))
-
-
-tbl <- tableGrob(show, rows=NULL, theme=tt)
-# outline
-tbl = gtable_add_grob(tbl, 
-                             grobs = rectGrob(gp=gpar(fill=NA, lwd=2)), 
-                             t = 1, b = nrow(tbl), l = 1, r = ncol(tbl) )
-# header
-tbl <- gtable_add_grob(tbl,
-                     grobs = rectGrob(gp = gpar(fill = NA, lwd = 2)),
-                     t = 1, l = 1, r = ncol(tbl))
-# vertical bar
-tbl <- gtable_add_grob(tbl,
-                       grobs = rectGrob(gp = gpar(fill = NA, lwd = 2)),
-                       t = 1, b = nrow(tbl), l = 1)
-# highlight
-tbl <- gtable_add_grob(tbl,
-                       grobs = rectGrob(gp = gpar(fill = NA, lwd = 2)),
-                       t = 1, b = nrow(tbl), l = 1)
-
-
-# Plot chart and table into one object
-x = grid.arrange(plots[[4]], tbl,
-             ncol=2, 
-             widths = c(4,3),
-             padding=unit(1, "cm")) 
-
-print(x)
-#mysave(paste0(plotsdir, "cloneVerifiedWithGenes.svg"), x)
-mysave(paste0(plotsdir, "cloneVerifiedWithGenes.pdf"), x)
+mysave(paste0(plotsdir, "cloneVerifiedWithGenes.pdf"), plots[[4]])
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if(F){
 
 dim(validated)
 y =sum(validated$length)
@@ -246,7 +244,7 @@ important = df[ grepl(geneRegex, df$gene), ]
 important
 
 
-
+}
 
 
 

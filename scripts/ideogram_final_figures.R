@@ -15,8 +15,9 @@ library(GenomicRanges)
 suppressPackageStartupMessages(library("argparse"))
 bedform = c("chr", "start", "end")
 
-genome = "Mitchell_CHM1_V2"
 genome = "CHM13"
+genome = "Mitchell_CHM1_V2"
+genome = "Mitchell_CHM1"
 genome = "Yoruban_feb_2018"
 
 
@@ -120,7 +121,7 @@ plotKP <- function(chrs, dopdf=FALSE, name="ideogram", all=FALSE){
   if(dopdf){
     file = paste0(paste0(plotsdir,"ideogram/"), name)
     file = paste0(file, ".pdf")
-    pdf(file, width = 15, height = 10)
+    pdf(file, width = 10, height = 10 )
   }
   if(all){
     kp <- plotKaryotype(genome="hg38", plot.type = 2)
@@ -137,23 +138,23 @@ plotKP <- function(chrs, dopdf=FALSE, name="ideogram", all=FALSE){
   #kpText(kp, data.panel=2, chr="chr1", x = rep(-15000000,2), y = c(0.10, 0.35, 0.75), labels = c("Collapsed","SegDups", "DeNovo Asm"))
   
   # data panael 1, ABP sequences
-  kpPlotRegions(kp, data=highid, col=highid.color, layer.margin = 0.05, r0=0, r1=0.45)
-  kpPlotRegions(kp, data=lowid, col=lowid.color, layer.margin = 0.05,  r0=0.5, r1=1)
-  #kpPlotRegions(kp, data=alreadyDone, col=alreadyDone.color, layer.margin = 0.05, r0=-0.05, r1=0)
-  
+  #kpPlotRegions(kp, data=highid, col=highid.color, layer.margin = 0.05, r0=0, r1=0.45)
+  #kpPlotRegions(kp, data=lowid, col=lowid.color, layer.margin = 0.05,  r0=0.5, r1=1)
+  kpPlotRegions(kp, data=lowid, col=asm.short.color, layer.margin = 0.05,  r0=0.5-.5, r1=1)
+  kpPlotRegions(kp, data=highid, col=asm.long.color, layer.margin = 0.05, r0=0, r1=0.45+.55)
   # data panel 2, seg dups, colored by status
-  #kpPlotRegions(kp, data=res, col=res.color, layer.margin = 0.05,  r0=0, r1=0.20, data.panel = 2)
+  #kpPlotRegions(kp, data=res, col=res.color, layer.margin = 0.05, r0=0.25, r1=.45, data.panel = 2)
   #kpPlotRegions(kp, data=unres, col=unres.color, layer.margin = 0.05, r0=0.25, r1=.45, data.panel = 2)
-  kpPlotRegions(kp, data=res, col=res.color, layer.margin = 0.05, r0=0.25, r1=.45, data.panel = 2)
-  kpPlotRegions(kp, data=unres, col=unres.color, layer.margin = 0.05, r0=0.25, r1=.45, data.panel = 2)
-  kpPlotRegions(kp, data=collapsed, col=collapsed.color, layer.margin = 0.05,  r0=0, r1=0.20, data.panel = 2)
+  #kpPlotRegions(kp, data=collapsed, col=collapsed.color, layer.margin = 0.05,  r0=0, r1=0.20, data.panel = 2)
+  
+  kpPlotRegions(kp, data=res, col=res.color, layer.margin = 0.05, r0=0.5-.5, r1=1, data.panel = 2)
+  kpPlotRegions(kp, data=unres, col=unres.color, layer.margin = 0.05, r0=0.5-.5, r1=1, data.panel = 2)
+  #kpPlotRegions(kp, data=collapsed, col=lowid.color, layer.margin = 0.05,  r0=0, r1=0.45, data.panel = 2)
   
   
   # data panel 2, CHM1 assembly plot
-  #asm.short <- reduce(resolvedSegdups)
-  #asm.long <- reduce(unresolvedSegdups)
-  kpPlotRegions(kp, data=asm.long, col=asm.long.color, layer.margin = 0.05, r0=.70, r1=0.5, data.panel = 2)
-  kpPlotRegions(kp, data=asm.short, col=asm.short.color, layer.margin = 0.05, r0=.95, r1=0.75, data.panel = 2)
+  #kpPlotRegions(kp, data=asm.long, col=asm.long.color, layer.margin = 0.05, r0=.70, r1=0.5, data.panel = 2)
+  #kpPlotRegions(kp, data=asm.short, col=asm.short.color, layer.margin = 0.05, r0=.95, r1=0.75, data.panel = 2)
   
   if(dopdf){
     dev.off()
@@ -189,7 +190,7 @@ summary(width(lowid))
 #
 # combined plot
 #
-if(T){
+if(F){
 
 x = reduce( c( highid, lowid  ) )
 sum(width(x))/10^6
@@ -285,3 +286,4 @@ kpPlotRegions(kp, data=, col=lowid.color, layer.margin = 0.05,  r0=.90 +offset, 
 
 
 }
+

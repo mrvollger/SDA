@@ -17,11 +17,12 @@ import re
 import itertools 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from Bio import SeqIO
 import pysam 
-import runCmd
 if sys.version_info[0] < 3: 
     from StringIO import StringIO
 else:

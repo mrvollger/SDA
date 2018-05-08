@@ -19,13 +19,13 @@ library(data.table)
 library(bedr)
 library(evaluate)
 library(stringdist)
+library(GenomicRanges)
 suppressPackageStartupMessages(library("argparse"))
 
-# create defualt files to run
-genome = "Mitchell_CHM1_V2"
 genome = "CHM13"
 genome = "Yoruban_feb_2018"
 genome = "Mitchell_CHM1"
+genome = "Mitchell_CHM1_V2"
 
 
 asmdirs = strsplit( Sys.glob("~/Desktop/work/assemblies/*"), "/") 
@@ -88,10 +88,13 @@ myTheme =theme(plot.title = element_text(face = "bold", size = rel(1.2), hjust =
                #panel.grid.minor = element_blank(),
                plot.margin=unit(c(10,5,5,5),"mm"),
                #strip.background=element_rect(colour="#f0f0f0",fill="#f0f0f0"),
-               strip.text = element_text(face="bold")
+               strip.text = element_text(face="bold"),
+               legend.position="none"
 )
-col4=c("#b20000","#660000","#A9A9A9","#000000")  
-names(col4) <- (c(failed,mAsm,pr, res))
+#col4=c("#b20000","#660000","#A9A9A9","#000000")  
+#names(col4) <- (c(failed,mAsm,pr, res))
+col4=c("#000000","#A9A9A9","#660000","#b20000")  
+names(col4) <- (c(res, pr, mAsm, failed))
 col4
 col2=col4[c(pr, res)]
 col2
@@ -233,12 +236,13 @@ all$Status[all$Status == "Resolved"] = res
 
 # remove multiple assemblies that appear more than once. I want them overall for mapping them, but i do not want them for this summary
 dim(all)
-df =all[ !duplicated(all, by=c("collapse", "Status", "CC_ID"), fromLast = F) ]
+df = all[ !duplicated(all, by=c("collapse", "Status", "CC_ID"), fromLast = F) ]
 dim(df)
+
 #
 # reorder Status factors for ggplot
 #
-df$Status <- factor(df$Status, levels=c(failed, mAsm, pr, res))
+df$Status <- factor(df$Status, levels=c(res, pr, mAsm, failed))
 #
 # remove some NAs
 #
@@ -259,14 +263,27 @@ statusCounts = data.frame(Status = c(pr, res, failed, mAsm),
                      counts = counts)
 dim(df)
 statusCounts
+rangeRes = makeGRangesFromDataFrame(df[df$Status == res, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
+rangeDiv = makeGRangesFromDataFrame(df[df$Status == pr, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
+rangeMasm = makeGRangesFromDataFrame(df[df$Status == mAsm, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
 
+MBs = c( paste(round(sum(width(reduce(rangeDiv)))/10^6,1), "Mb"),
+  paste(round(sum(width(reduce(rangeRes)))/10^6,1), "Mb"),
+  #NA,
+  paste(round(sum(width(reduce(rangeMasm)))/10^6,1), "Mb")   , NA)
+names(MBs) = c(pr, res, mAsm, failed)
+MBs = data.frame(MBs)
+MBs
+statusCounts= merge(statusCounts, MBs, by="row.names")
+statusCounts$id <- paste(statusCounts$counts, statusCounts$MBs, sep=" / ")
+statusCounts
 
 p0 <- ggplot(df, aes(Status, fill=Status)) + geom_bar() + 
   labs(y = "Cluster Count") +
   guides(fill=FALSE)+
-  geom_text(data=statusCounts, aes(y=counts, x=Status, label=counts),vjust=-.1, size = 8) +
+  geom_text(data=statusCounts, aes(y=counts, x=Status, label=id),vjust=-.1, size = 8) +
   scale_fill_manual(values=col4) + myTheme 
-#p0
+p0
 mysave("statusHist.pdf", p0)
 
 
@@ -283,7 +300,7 @@ p0.1 = ggplot(fai, aes(x=fai[["Collapse Length"]] )) +
   scale_fill_manual(values=col4) +
   scale_x_continuous( breaks=seq(0, top, by = by), labels=c( seq(0, (top-by)/1000, by = by/1000), "150+") ) +
   xlab("Collapse length (kb)") + ylab("Counts")+ myTheme
-#p0.1
+p0.1
 mysave("CollapseLength.pdf", p0.1)
 
 

@@ -12,9 +12,12 @@ from Bio import SeqIO
 # setup the env for each exacution 
 #
 SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
+snake_dir = SNAKEMAKE_DIR + "/"
 shell.executable("/bin/bash")
 #shell.prefix("source %s/env_PSV.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_PSV.cfg; " % SNAKEMAKE_DIR)
+shell.prefix("source %s/env_python3.cfg; " % SNAKEMAKE_DIR)
+python3 = snake_dir + "env_python3.cfg"
+python2 = snake_dir + "env_python2.cfg"
 
 #
 # A little complicated to find the temp dir
@@ -38,11 +41,6 @@ print("The reference is this file: {}".format(reference))
 
 
 localrules: all, 
-			#mask, no_mask,
-			#MergeCoverage, 
-			#FaiToBed, 
-			#getCoverageStats, 
-			#GenerateMinAndMax, 
 			BedForCollapses,
 			GetOneKregionCoverage,
 			FiveKWindowStepOneK,
@@ -53,27 +51,15 @@ localrules: all,
 			StartFofn,
 			GenerateBatchRunScript,
 			LocalAssembliesBed,
-			#LocalAssembliesRegions,
-			#LocalAssembliesBed,
-			#LocalAssembliesRgn,
-			#LocalAssembliesRef,
-			#LocalAssembliesBam,
-			#LocalAssembliesConfig,
+			illuminaDone,
+			illuminaFakeDone,
 
 rule all:
 	input:
-		#combined="coverage/all.merged.bed",
-		#stats="coverage/all.stats.txt",
-		#minmax="MinMax.sh",
-		#collapses="collapses.bed",
-		#readme = "reference/README.txt",
-		#laregions="LocalAssemblies/regions.txt",
-		#ref = "reference/ref.masked.fasta",
-		#allsam="LocalAssemblies/all.ref.fasta.sam",
-		#duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
-		#cov=dynamic("LocalAssemblies/{region}/coverage.json"),
 		done="LocalAssemblies/README.txt",
 		array="LocalAssemblies/RunAssembliesByArray.sh",
+		amb = os.path.dirname(os.path.realpath(reference)) + "/bwa.amb", # this is to index for bwa
+		illumina="illumina/done.txt",
 
 DIRS = "benchmarks reference fofns coverage LocalAssemblies alignments" 
 #
@@ -387,6 +373,7 @@ rule BamToBed:
         samutils=config["mcutils"]
     shell:
         """
+		source {python2}
         samtools view {input.bam} | \
 				{params.samutils}/samToBed /dev/stdin --reportIdentity |
 				bedtools sort -i - > {output.bed}
@@ -992,26 +979,26 @@ rule combineRefFasta:
 #
 # map the collapse the the human reference
 #
-rule duplicationsFasta1:
+rule duplicationsFasta:
 	input:
-		dupref="LocalAssemblies/all.ref.fasta",
+		dupref=rules.combineRefFasta.output.allref,
+		#dupref="LocalAssemblies/all.ref.fasta",
 	output:
 		dupreffai="LocalAssemblies/all.ref.fasta.fai",
 		dupsam="LocalAssemblies/all.ref.fasta.sam",
 	params:
 		blasr=config["blasr"],
-		cluster=" -pe serial 4 -l mfree=16G -l h_rt=12:00:00",
+		cluster=" -pe serial 8 -l mfree=8G -l h_rt=12:00:00",
+	threads: 8
 	shell:
 		"""
+		source {python2}
 		samtools faidx {input.dupref}
-
 		# for some reason blasr (43) wokrs mcuh better for this than params.blasr (46)
-		blasr -nproc 4 -sa {sa} -sam -out /dev/stdout \
+		blasr -nproc {threads} -sa {sa} -sam -out /dev/stdout \
 			-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
 			{input.dupref} {GRCh38} | \
-			samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
-		echo "here2"
-
+			samtools view -h -F 4 - | samtools sort -@ {threads} -m 8G -T tmp -o {output.dupsam}
 		"""
 		
 #
@@ -1019,15 +1006,17 @@ rule duplicationsFasta1:
 #
 rule getHighIdentity:
 	input:
-		dupsam="LocalAssemblies/all.ref.fasta.sam",
+		dupsam=rules.duplicationsFasta.output.dupsam,
+		#dupsam="LocalAssemblies/all.ref.fasta.sam",
 	output:
 		duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
 	params:
 		cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		samutils=config["mcutils"],
 	shell:
 		"""
-		#~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity | awk '{{ if ($3-$2 >8999 && $9 > 0.80) print $1":"$2"-"$3 }}' > {output.duptsv}
-		~mchaisso/projects/mcutils/bin/samToBed {input.dupsam} --reportIdentity > {output.duptsv}
+		source {python2}
+		{params.samutils}/samToBed {input.dupsam} --reportIdentity > {output.duptsv}
 		"""
 
 
@@ -1037,7 +1026,8 @@ rule getHighIdentity:
 #
 rule ConvertTsvToBedAndRgn:
 	input:
-		duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
+		duptsv=rules.getHighIdentity.output.duptsv,
+		#duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
 	output:
 		bedDone="LocalAssemblies/bed.done.txt",
 		#dupbed=dynamic("LocalAssemblies/{region}/ref.fasta.long.bed")
@@ -1166,4 +1156,180 @@ cwd=`awk "NR == $SGE_TASK_ID"  regions.txt`
 """
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+#############################################
+### adding pilon/illumina to the pipeline ###
+#############################################
+'''
+If you have two fastq files your command:
+bwa mem -M -t 16 ref.fa read1.fq read2.fq > aln.sam
+is absolutely fine. Your read2.fq is called mates.fq in the bwa examples. 
+If you view the first lines of both files the read names are identical despite a 1 or 2 for the corresponding read of the pair.
+
+If you only have one interleaved fastq file you would use the -p option:
+bwa mem -M -t 16 -p ref.fa read.fq > aln.sam
+In this case both reads of a pair are in the same fastq file successively. Have a look at the read names.
+'''
+
+if("illumina" in config):
+	illumina = open( config["illumina"]).readlines()
+	readidxs = set()
+	for line in illumina:
+		match = re.match(".*/([A-Za-z0-9]+)_[1|2].fastq.*", line)
+		if(match):
+			index = match.group(1)
+			readidxs.add(index)
+	readidxs = list(readidxs)
+	print("Illumina read IDs:")
+	print(readidxs)
+
+	rule SplitIllumina:
+		input:
+			fofn = config["illumina"],
+		output:
+			read1=expand("illumina/reads/{index}_1.fastq.gz", index = readidxs),
+			read2=expand("illumina/reads/{index}_2.fastq.gz", index = readidxs),
+		params:
+			cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+			baxPerJob=config["bax_per_job"]
+		run:
+			lines = open(input["fofn"]).readlines()
+			for line in  lines:
+				path = line.strip()
+				outpath =  " " + os.getcwd() + "/illumina/reads/."
+				shell("ln -s " + path + outpath)
+
+
+	rule indexRefForBWA:
+		input:
+			asm=ancient(reference),
+		output:
+			amb = os.path.dirname(os.path.realpath(reference)) + "/bwa.amb",
+			ann = os.path.dirname(os.path.realpath(reference)) + "/bwa.ann",
+			bwt = os.path.dirname(os.path.realpath(reference)) + "/bwa.bwt",
+			pac = os.path.dirname(os.path.realpath(reference)) + "/bwa.pac",
+			sa = os.path.dirname(os.path.realpath(reference)) + "/bwa.sa",
+		params:
+			cluster=" -pe serial 1 -l mfree=24G -l h_rt=24:00:00",
+		run:
+			asm_index = os.path.dirname(os.path.realpath(reference)) + "/bwa"	
+			shell("bwa index -p " + asm_index + " -a bwtsw {input.asm}")
+
+
+	#
+	#  For read depth, and other future steps, it is necessary to map reads back to the assembly.
+	#
+	rule MapIllumina:
+		input:
+			read1=("illumina/reads/{index}_1.fastq.gz"),
+			read2=("illumina/reads/{index}_2.fastq.gz"),
+			amb = os.path.dirname(os.path.realpath(reference)) + "/bwa.amb",
+			ann = os.path.dirname(os.path.realpath(reference)) + "/bwa.ann",
+			bwt = os.path.dirname(os.path.realpath(reference)) + "/bwa.bwt",
+			pac = os.path.dirname(os.path.realpath(reference)) + "/bwa.pac",
+			sa = os.path.dirname(os.path.realpath(reference)) + "/bwa.sa",
+		output:
+			align="illumina/alignments/align.{index}.bam"
+		params:
+			cluster=" -pe serial 8 -l mfree=8G -l h_rt=24:00:00",
+		threads: 8
+		run:
+			asm_index = os.path.dirname(os.path.realpath(reference)) + "/bwa"	
+			cmd = "bwa mem -M -t {threads} " + asm_index 
+			cmd += " {input.read1} {input.read2} | samtools view -bS -F 4 - | "
+			cmd += " samtools sort -T {TMPDIR}/bwa -@ {threads} -m 8G - -o {output.align}"
+			shell(cmd)
+
+	rule indexBWA:
+		input:
+			align=rules.MapIllumina.output.align
+		output:	
+			bai="illumina/alignments/align.{index}.bam.bai",
+		params:
+			cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		shell:
+			"""
+			samtools index {input.align}
+			"""
+
+
+	rule illuminaAlnDone:
+		input:
+			bai = expand(rules.indexBWA.output.bai, index = readidxs),
+		output:
+			illumina="illumina/aln.done.txt",
+		params:
+			cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		shell:
+			"""
+			touch {output.illumina}
+			"""
+
+	#
+	# find the reads in all the bam files that map to that region
+	#
+	rule LocalAssembliesIlluminaBam:
+		input:
+			illumina=rules.illuminaAlnDone.output.illumina,
+			refdone = rules.getReferenceSequences.output.refDone,
+			bed = rules.LocalAssembliesRef.input.bed,
+		output:
+			bams="LocalAssemblies/{region}/illumina.orig.bam"
+		params:
+			cluster=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
+		run:
+			import pysam
+			bed = open(input["bed"]).read().strip()
+			token = bed.split()
+			
+			allreads = None
+			for idx, bam in enumerate(sorted(glob.glob("illumina/alignments/align.*.bam"))):
+				samfile = pysam.AlignmentFile(bam, "rb")
+				if(idx == 0 ):
+					allreads = pysam.AlignmentFile(output["bams"], "wb", template=samfile)
+
+				for read in samfile.fetch(token[0], int(token[1]), int(token[2])):
+					allreads.write(read)
+				samfile.close()		
+			
+			allreads.close()
+			
+
+
+	rule illuminaDone:
+		input:
+			local = dynamic(rules.LocalAssembliesIlluminaBam.output.bams),
+		output:
+			illumina="illumina/done.txt"
+		#params:
+		#	cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		shell:
+			"""
+			touch {output.illumina}
+			"""
+
+
+
+else:
+	rule illuminaFakeDone:
+		input:
+		output:
+			illumina="illumina/done.txt"
+		#params:
+		#	cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
+		shell:
+			"""
+			touch {output.illumina}
+			"""	
 

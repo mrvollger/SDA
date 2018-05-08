@@ -1,14 +1,9 @@
 import os
-import glob
-from Bio import SeqIO
-import re
 
-snake_dir = os.path.dirname(workflow.snakefile)
-print(snake_dir)
-
+snake_dir = os.path.dirname(workflow.snakefile) + "/"
 shell.executable("/bin/bash")
 #shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_python2.cfg; " % SNAKEMAKE_DIR)
+shell.prefix("source %s/env_python2.cfg; " % snake_dir)
 
 #
 # script locations and configurations 
@@ -28,11 +23,12 @@ quiver = snake_dir + "software/quiver/quiver"
 quiver_source = snake_dir + "software/quiver/setup_quiver.sh"
 base = snake_dir + "scripts/"
 scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
+python3 = snake_dir + "env_python3.cfg"
 #
 #
 #
 
-
+print(snake_dir)
 print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
 rule all:	
@@ -168,10 +164,9 @@ rule hetProfile:
         nucfreq="snvs/nofilter.consensus.nucfreq",
     shell:
         """
-		PBS=/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/
 		samtools mpileup -q 0 -Q 0 {input.reads} | \
-				$PBS/Phasing/MpileupToFreq.py  /dev/stdin | \
-				$PBS/Phasing/PrintHetFreq.py 0 \
+				{base}/MpileupToFreq.py  /dev/stdin | \
+				{base}/PrintHetFreq.py 0 \
 				--maxCount 100 \
 				--minTotal 0 \
 				> {output.nucfreq}
@@ -184,11 +179,8 @@ rule thresholdProfile:
         png="Coverage.png",
     shell:
         """
-		module purge
-		. /etc/profile.d/modules.sh
-		module load modules modules-init modules-gs/prod modules-eichler
-		module load anaconda/20161130
-		autoThreshold.py --nucfreq {input.nucfreq} --png {output.png} 
+		source {python3}
+		{base}/autoThreshold.py --nucfreq {input.nucfreq} --plot {output.png} 
         """
 
 #
@@ -197,7 +189,6 @@ rule thresholdProfile:
 #
 rule create_SNVtable_from_reads:
 	input:
-		png="Coverage.png",
 		reads="reads.bam",
 		ref="ref.fasta"	,
 	output: 
@@ -208,20 +199,17 @@ rule create_SNVtable_from_reads:
 		frag="snvs/assembly.consensus.fragments",
 	shell:
 		"""
-		#{scriptsDir}/BamToSNVTable.sh {input.reads} {input.ref} {MINCOV} {MINTOTAL}
-		PBS=/net/eichler/vol5/home/mchaisso/projects/PacBioSequencing/scripts/
-		
 		echo "Sam to nucfreq"
 		samtools mpileup -q 0 -Q 0 {input.reads} | \
-				$PBS/Phasing/MpileupToFreq.py  /dev/stdin | \
-				$PBS/Phasing/PrintHetFreq.py {MINCOV} \
+				{base}/MpileupToFreq.py  /dev/stdin | \
+				{base}/PrintHetFreq.py {MINCOV} \
 				--maxCount {MINCOV} \
 				--minTotal {MINTOTAL} \
 				> {output.nucfreq}
 		
 		echo "filter nucfreq"
 		samtools view -h {input.reads} | \
-				/net/eichler/vol5/home/mchaisso/projects/pbgreedyphase/readToSNVList  \
+				{base}/readToSNVList  \
 				--nft {output.nucfreq} \
 				--sam /dev/stdin \
 				--ref {input.ref} \
@@ -322,10 +310,6 @@ else:
 			cat {input} | awk '{{ print $1"\t"$2"\tall"}}' > {output}
 			"""
 
-			'''
-            {base}/categorize.sh {input} {output}
-            '''
-
 
 #
 # This finds PSVs that are connected by a sufficient number of
@@ -358,7 +342,7 @@ rule GenerateRepulsion:
 		rep = "CC/mi.repulsion",
 	shell:
 		"""
-		{base2}/GenerateRepulsion.py --shared 5 --lrt 1.5 --max 3 --gml {input.graph} --mi {input.mi} --out {output.rep}
+		{base}/GenerateRepulsion.py --shared 5 --lrt 1.5 --max 3 --gml {input.graph} --mi {input.mi} --out {output.rep}
 		"""
 
 runIters = True
@@ -450,7 +434,7 @@ rule gephi:
 		pdf="CC/mi.cuts.gml.pdf",
 	run:
 		shell("mkdir -p extraCCplots")
-		shell(base2 + "/gephi/gephi.sh {input.cuts} mi.cuts.gml" )
+		shell("source {python3}; {base}/gephi/gephi.sh {input.cuts} mi.cuts.gml" )
 		shell("mv mi.cuts.gml.pdf {output.pdf}")
 		collapse = os.path.basename(os.getcwd()) + ".pdf"
 		shell("cp " + output["pdf"] + " " + collapse)
