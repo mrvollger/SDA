@@ -3,7 +3,7 @@ import os
 snake_dir = os.path.dirname(workflow.snakefile) + "/"
 shell.executable("/bin/bash")
 #shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_python2.cfg; " % snake_dir)
+shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % snake_dir)
 
 #
 # script locations and configurations 
@@ -17,6 +17,7 @@ MAXCOV=config["MAXCOV"]
 MINTOTAL=config["MINTOTAL"]
 
 blasr = snake_dir + "software/blasr/bin/blasr"
+sourceblasr = "source {}env_blasr.cfg".format( snake_dir ) # get the balsr enviorment from the balsr env file
 blasr43 = snake_dir + "software/blasr/bin/blasr43"
 samtobas = snake_dir + "software/blasr/bin/samtobas"
 quiver = snake_dir + "software/quiver/quiver"
@@ -52,25 +53,39 @@ if(os.path.exists("reads.orig.bam")):
 		output:
 			'reads.bas.h5'
 		shell:
-			'samtools view -h {input} | {samtobas} /dev/stdin {output}'
+			'samtools view -h {input} | {samtobasi} /dev/stdin {output}'
 
 	rule realign_reads:
 		input:
-			basreads='reads.bas.h5', 
-			ref='ref.fasta'
+			reads = 'reads.orig.bam',
+			ref='ref.fasta',
 		output:
 			"reads.bam"
 		threads:
 			8
 		shell: 
 			"""
-			{blasr}	{input.basreads} {input.ref}  \
-				-sam -preserveReadTitle -clipping subread -out /dev/stdout \
+			{sourceblasr}
+			# the grep line removes references to previous alignment references 
+			samtools view -h {input.reads} | \
+				grep -v "^@SQ" | \
+				blasr /dev/stdin {input.ref} \
+				-clipping soft \
+				-passthrough \
+				-streaming \
+				-fileType sam \
+				-sam \
+				-out /dev/stdout \
 				-nproc {threads} -bestn 1 \
 				-mismatch 3 -insertion 9 -deletion 9 \
 				-minAlignLength {minaln} | \
 				 samtools view -bS -F 4 - | \
 				 samtools sort -m 4G -T tmp -o {output}
+				
+				
+				#pbsamstream - | \
+				# the above sets tlen in the sam to zero for some reason. 
+				#-m 4 
 			"""
 
 elif(os.path.exists("reads.orig.fasta")):
@@ -82,7 +97,8 @@ elif(os.path.exists("reads.orig.fasta")):
             "reads.bam"
         shell: 
             """
-			{blasr}	{input.basreads} {input.ref}  \
+			{sourceblasr}
+			blasr {input.basreads} {input.ref}  \
 					-sam -preserveReadTitle -clipping subread -out /dev/stdout \
 					-nproc {threads} -bestn 1 \
                     -mismatch 3 -insertion 9 -deletion 9 \
@@ -101,8 +117,9 @@ elif(os.path.exists("reads.fofn")):
         threads: 8
         shell: 
             """
-			{blasr}	{input.basreads} {input.ref}  \
-					-sam -preserveReadTitle -clipping subread -out /dev/stdout \
+			{sourceblasr}
+			blasr {input.basreads} {input.ref}  \
+					-sam -preserveReadTitle -clipping none -out /dev/stdout \
 					-nproc {threads} -bestn 1 \
                     -mismatch 3 -insertion 9 -deletion 9 \
                     -minAlignLength {minaln} | \
@@ -268,7 +285,8 @@ if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta
 		threads:8
 		shell:
 			"""
-			{blasr} -sam  \
+			{sourceblasr}
+			blasr -sam  \
 					-nproc {threads} -out /dev/stdout \
 					-minAlignLength 500 -preserveReadTitle -clipping subread \
 					{input.reads} {input.ref} | \
@@ -287,7 +305,7 @@ if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta
 			"dup/reads.dups.m4",
 		threads: 8 
 		shell:
-			'{blasr} {input.reads} {input.genome} -m 4 -bestn 1 -preserveReadTitle -out {output} -nproc {threads}'
+			'{sourceblasr}; blasr {input.reads} {input.genome} -m 4 -bestn 1 -preserveReadTitle -out {output} -nproc {threads}'
 
 	rule orderMatByalignments: #get more explanation
 		input:

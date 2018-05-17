@@ -56,9 +56,10 @@ localrules: all,
 
 rule all:
 	input:
+		one="coverage/all.stats.txt",
 		done="LocalAssemblies/README.txt",
 		array="LocalAssemblies/RunAssembliesByArray.sh",
-		amb = os.path.dirname(os.path.realpath(reference)) + "/bwa.amb", # this is to index for bwa
+		#amb = os.path.dirname(os.path.realpath(reference)) + "/bwa.amb", # this is to index for bwa
 		illumina="illumina/done.txt",
 
 DIRS = "benchmarks reference fofns coverage LocalAssemblies alignments" 
@@ -555,8 +556,8 @@ rule GetCoverageStats:
 					names=['contig', 'start', 'end',"coverage"])
 			# I want to eliminte the really low or really high coverage things because they are probably
 			# not assembled correctly and then assecess what the mean and standard deviation is
-			top = bed.coverage.quantile(.98)
-			bot = bed.coverage.quantile(.02)
+			top = bed.coverage.quantile(.95)
+			bot = bed.coverage.quantile(.05)
 			bed = bed[ ( bed.coverage < top ) & ( bed.coverage > bot ) ]
 			
 			stats = bed["coverage"].describe()
@@ -578,10 +579,11 @@ rule GenerateMinAndMax:
 		stats = pd.read_csv(input["stats"], header = 0, sep = "\t")
 		# the plust one is to make it round up
 		maxcov = int(stats.iloc[0]["mean_coverage"] )
-		#mintotal=int(2.0*stats.iloc[0]["mean_coverage"] - 0.1*stats.iloc[0]["std_coverage"]+1)
 		mintotal=int( stats.iloc[0]["mean_coverage"] + 3*stats.iloc[0]["std_coverage"] + 1 )
-		#mincov = int(stats.iloc[0]["mean_coverage"] * 0.5 - 0.1*stats.iloc[0]["std_coverage"]+1)
-		mincov = int( stats.iloc[0]["mean_coverage"] - 3*stats.iloc[0]["std_coverage"] )
+		# turns out sd is too varible to set a miniumum threshold.
+		# mincov = int( stats.iloc[0]["mean_coverage"] - 3*stats.iloc[0]["std_coverage"] )
+		mincov = int(stats.iloc[0]["mean_coverage"]/2.0)
+		
 		out = "export MINCOV={}\nexport MAXCOV={}\nexport MINTOTAL={}\n".format(mincov, maxcov, mintotal)
 		#open(output["minmax"], "w+").write(out)
 		out2 = '{{\n\t"MINCOV" : {},\n\t"MAXCOV" : {},\n\t"MINTOTAL" : {},\n'.format(mincov, maxcov, mintotal)
@@ -750,7 +752,8 @@ rule FilterCollapses:
 		minsize = 9000
 		maxRC = 75
 		# plot what filter will be 
-		cmd = "/net/eichler/vol2/home/mvollger/projects/abp/PlotFilterBySizeAndRepeatContent.R --bed {} --png {} --size {} --repeatContent {}".format(input["unf"], output["png"], minsize, maxRC)
+		cmd = "{}scripts/PlotFilterBySizeAndRepeatContent.R --bed {} --png {} --size {} --repeatContent {}".format(
+				snake_dir, input["unf"], output["png"], minsize, maxRC)
 		shell(cmd)
 		# apply filter
 		collapses = collapses.ix[(collapses["length"] >= minsize) & (collapses["RC"]<=maxRC)]
@@ -1324,6 +1327,7 @@ if("illumina" in config):
 else:
 	rule illuminaFakeDone:
 		input:
+			asm=ancient(reference),
 		output:
 			illumina="illumina/done.txt"
 		#params:

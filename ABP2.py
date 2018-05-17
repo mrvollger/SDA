@@ -184,7 +184,7 @@ rule runAssembly:
                 || ( >&2 echo " no real assembly" && \
                 mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly && \
                 > {output} )
-
+		
         else
             >&2 echo " no real assembly"
             mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly

@@ -22,9 +22,9 @@ library(stringdist)
 library(GenomicRanges)
 suppressPackageStartupMessages(library("argparse"))
 
+genome = "Mitchell_CHM1"
 genome = "CHM13"
 genome = "Yoruban_feb_2018"
-genome = "Mitchell_CHM1"
 genome = "Mitchell_CHM1_V2"
 
 
@@ -63,7 +63,7 @@ if( ! dir.exists(args$dest)){
 
 # define the types of resolved 
 pr =  "Diverged"
-res  = "Assembled"
+res  = "Matched"
 failed = "Failed"
 mAsm = "Multiple Assemblies"
 theme_set(theme_gray(base_size = 24))
@@ -281,12 +281,12 @@ statusCounts
 p0 <- ggplot(df, aes(Status, fill=Status)) + geom_bar() + 
   labs(y = "Cluster Count") +
   guides(fill=FALSE)+
-  geom_text(data=statusCounts, aes(y=counts, x=Status, label=id),vjust=-.1, size = 8) +
+  geom_text(data=statusCounts, aes(y=counts, x=Status, label=counts),vjust=-.1, size = 8) +
   scale_fill_manual(values=col4) + myTheme 
 p0
 mysave("statusHist.pdf", p0)
 
-
+#exit()
 #
 # density of reference assembly length 
 #
