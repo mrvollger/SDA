@@ -3,7 +3,7 @@ import os
 snake_dir = os.path.dirname(workflow.snakefile) + "/"
 shell.executable("/bin/bash")
 #shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % snake_dir)
+shell.prefix("source %s/env_python2.cfg; " % snake_dir)
 
 #
 # script locations and configurations 
@@ -70,7 +70,7 @@ if(os.path.exists("reads.orig.bam")):
 			samtools view -h {input.reads} | \
 				grep -v "^@SQ" | \
 				blasr /dev/stdin {input.ref} \
-				-clipping soft \
+				-clipping none \
 				-passthrough \
 				-streaming \
 				-fileType sam \
@@ -78,7 +78,8 @@ if(os.path.exists("reads.orig.bam")):
 				-out /dev/stdout \
 				-nproc {threads} -bestn 1 \
 				-mismatch 3 -insertion 9 -deletion 9 \
-				-minAlignLength {minaln} | \
+				-minAlignLength {minaln} \
+				-minMatch 8 | \
 				 samtools view -bS -F 4 - | \
 				 samtools sort -m 4G -T tmp -o {output}
 				
@@ -189,6 +190,7 @@ rule hetProfile:
 				> {output.nucfreq}
 
         """
+
 rule thresholdProfile:
     input:
         nucfreq="snvs/nofilter.consensus.nucfreq",
@@ -197,7 +199,7 @@ rule thresholdProfile:
     shell:
         """
 		source {python3}
-		{base}/autoThreshold.py --nucfreq {input.nucfreq} --plot {output.png} 
+		{base}autoThreshold.py --nucfreq {input.nucfreq} --plot {output.png} 
         """
 
 #
