@@ -17,7 +17,7 @@ shell.executable("/bin/bash")
 #shell.prefix("source %s/env_PSV.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
 shell.prefix("source %s/env_python3.cfg; " % SNAKEMAKE_DIR)
 python3 = snake_dir + "env_python3.cfg"
-python2 = snake_dir + "env_python2.cfg"
+python2 = snake_dir + "old.env_python2.cfg"
 
 #
 # A little complicated to find the temp dir
@@ -169,7 +169,7 @@ rule RepeateMaskerBed:
 		cluster=" -pe serial 1 -l mfree=8G -l h_rt=12:00:00",
 	shell:
 		"""
-		/net/eichler/vol2/home/mvollger/projects/abp/RepeatMaskingToBed.py {input.RMout}
+		{snake_dir}/scripts/RepeatMaskingToBed.py {input.RMout}
 		"""
 
 
@@ -271,6 +271,7 @@ rule MakeASMsa:
         blasr=config["blasr"]
     shell:
         """
+		source {python2}
         sawriter {input.asm}
         """
 #
@@ -321,24 +322,26 @@ rule SplitFOFN:
 #  For read depth, and other future steps, it is necessary to map reads back to the assembly.
 #
 rule MapReads:
-    input:
-        asm=reference,
-        asmsa=reference + ".sa",
-        fofn="fofns/reads.{index}.fofn"
-    output:
-        align="alignments/align.{index}.bam"
-    params:
-        cluster=" -pe serial 8 -l mfree=8G -l h_rt=24:00:00",
-        blasr=config["blasr"]
-    shell:
-        """
+	input:
+		asm=reference,
+		asmsa=reference + ".sa",
+		fofn="fofns/reads.{index}.fofn"
+	output:
+		align="alignments/align.{index}.bam"
+	params:
+		cluster=" -pe serial 8 -l mfree=8G -l h_rt=24:00:00",
+		blasr=config["blasr"]
+	threads: 8
+	shell:
+		"""
+		source {python2}
 		# bestn 2 is because a asm might be fragmented in half and we want
 		# a read to be able to map to both halves.
 		# not sure if mapQV should be 0 or 30, Mark said 0 was probably a msitake and to use 30
 		{params.blasr} {input.fofn} {input.asm}  -sa {input.asmsa} \
 			-sdpTupleSize 13  -sdpMaxAnchorsPerPosition 10 -maxMatch 25 \
 			-minMapQV 30 -bestn 2 -advanceExactMatches 15  \
-            -clipping subread -nproc 8 -sam -out /dev/stdout | \
+            -clipping subread -nproc {threads} -sam -out /dev/stdout | \
             samtools view -bS -F 4 - | \
             samtools sort -T {TMPDIR}/blasr -@ 8 -m 8G - -o {output.align}
         """
@@ -648,7 +651,7 @@ rule BedForCollapses:
 		# writes to file before merging
 		bed.to_csv(output["temp"], header=False, index=False, sep="\t" )
 		# create a new file that merges adj regions that have the same strand (i.e. repeat content status) 
-		shell("bedtools merge -i {output.temp} -d 2 -s -c 4,5 -o mean,mean > {output.collapses}")
+		shell("bedtools merge -i {output.temp} -d 2 -s -c 6,4,5 -o distinct,mean,mean > {output.collapses}")
 
 
 #
@@ -715,7 +718,9 @@ rule MergeBedForCollapses:
 		# read in the merged set
 		HCR = pd.read_csv(input["collapses"], sep = "\t", header=None, 
 				names=['contig', 'start', 'end', "notRepeat", 'coverage', "repeatPer"])
+				#names=['contig', 'start', 'end', "notRepeat", 'coverage', "repeatPer"])
 		# calcualte collapse length, +1 is because they are inclusive ranges on both sides
+		print(HCR.head())
 		HCR["clength"] = HCR["end"] - HCR["start"] + 1
 		# see the function description
 		HCR = removeIsolatedRepeatContent(HCR)		
@@ -991,17 +996,32 @@ rule duplicationsFasta:
 		dupsam="LocalAssemblies/all.ref.fasta.sam",
 	params:
 		blasr=config["blasr"],
-		cluster=" -pe serial 8 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 4 -l mfree=8G -l h_rt=12:00:00",
 	threads: 8
 	shell:
 		"""
-		source {python2}
 		samtools faidx {input.dupref}
-		# for some reason blasr (43) wokrs mcuh better for this than params.blasr (46)
-		blasr -nproc {threads} -sa {sa} -sam -out /dev/stdout \
-			-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
-			{input.dupref} {GRCh38} | \
-			samtools view -h -F 4 - | samtools sort -@ {threads} -m 8G -T tmp -o {output.dupsam}
+		if [ "blasr" == "noblasr" ]; then 
+			source {python2}
+			# for some reason blasr (43) wokrs mcuh better for this than params.blasr (46)
+			blasr -nproc {threads} -sa {sa} -sam -out /dev/stdout \
+				-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
+				{input.dupref} {GRCh38} | \
+				samtools view -h -F 4 - | samtools sort -@ {threads} -m 8G -T tmp -o {output.dupsam}
+		else
+			which minimap2 	
+			minimap2 \
+					-ax asm10 \
+					-N 30 \
+					--cs \
+					-t {threads} \
+					{GRCh38} {input.dupref} | \
+					samtools view -h -F 2052 - | \
+					samtools sort -m 4G -T tmp -o {output.dupsam}
+			# cs adds a tag the generates info about insertion and deletion events 
+			# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
+			# actually i think I will allow chimeric, (allows jumps of large gaps)
+		fi 
 		"""
 		
 #

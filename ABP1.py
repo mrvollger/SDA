@@ -2,7 +2,7 @@ import os
 
 snake_dir = os.path.dirname(workflow.snakefile) + "/"
 shell.executable("/bin/bash")
-#shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
+#shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % snake_dir)
 shell.prefix("source %s/env_python2.cfg; " % snake_dir)
 
 #
@@ -25,6 +25,7 @@ quiver_source = snake_dir + "software/quiver/setup_quiver.sh"
 base = snake_dir + "scripts/"
 scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
 python3 = snake_dir + "env_python3.cfg"
+python2 = snake_dir + "env_python2.cfg"
 #
 #
 #
@@ -34,7 +35,6 @@ print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
 rule all:	
 	input:
-		dupbed="ref.fasta.bed",
 		pdf='CC/mi.cuts.gml.pdf',
 		groups=dynamic("group.{n}.vcf"),
 		png="Coverage.png",
@@ -64,30 +64,57 @@ if(os.path.exists("reads.orig.bam")):
 		threads:
 			8
 		shell: 
-			"""
+			'''
 			{sourceblasr}
-			# the grep line removes references to previous alignment references 
-			samtools view -h {input.reads} | \
-				grep -v "^@SQ" | \
-				blasr /dev/stdin {input.ref} \
-				-clipping none \
-				-passthrough \
-				-streaming \
-				-fileType sam \
-				-sam \
-				-out /dev/stdout \
-				-nproc {threads} -bestn 1 \
-				-mismatch 3 -insertion 9 -deletion 9 \
-				-minAlignLength {minaln} \
-				-minMatch 8 | \
-				 samtools view -bS -F 4 - | \
-				 samtools sort -m 4G -T tmp -o {output}
-				
-				
-				#pbsamstream - | \
-				# the above sets tlen in the sam to zero for some reason. 
-				#-m 4 
-			"""
+			if [ 'noblasr' == 'blasr' ]; then 
+				echo "Running Blasr"
+				which blasr
+				# the grep line removes references to previous alignment references 
+				samtools view -h {input.reads} | \
+					grep -v "^@SQ" | \
+					blasr /dev/stdin {input.ref} \
+					-clipping subread \
+					-passthrough \
+					-streaming \
+					-fileType sam \
+					-sam \
+					-out /dev/stdout \
+					-nproc {threads} -bestn 1 \
+					-mismatch 3 -insertion 9 -deletion 9 \
+					-minAlignLength {minaln} \
+					-minMatch 8 | \
+					 samtools view -bS -F 4 - | \
+					 samtools sort -m 4G -T tmp -o {output}
+					
+					
+					#pbsamstream - | \
+					# the above sets tlen in the sam to zero for some reason. 
+					#-m 4 
+			else
+				# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
+				which minimap2 	
+				samtools fastq {input.reads} | \
+						minimap2 \
+						-ax map-pb \
+						--cs \
+						-t {threads} \
+						-k 11 \
+						-A 3 \
+						-B 3 \
+						-O 9 \
+						-E 3 \
+						-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
+						ref.fasta /dev/stdin | \
+						samtools view -bS -F 2308 - | \
+						samtools sort -m 4G -T tmp -o {output}
+				# cs adds a tag the generates info about insertion and deletion events 
+				# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
+				# actually i think I will allow chimeric, (allows jumps of large gaps)
+				# -A matching score -B mismatching score -E gap extenshion penalty 
+			fi 
+
+			samtools index {output}
+			'''
 
 elif(os.path.exists("reads.orig.fasta")):
     rule realign_reads_fasta:
@@ -128,6 +155,42 @@ elif(os.path.exists("reads.fofn")):
                      samtools sort -m 4G -T tmp -o {output}
             """
 
+elif(os.path.exists("reads.fastq")):
+	rule get_reads_that_map:
+		input:
+			reads='reads.fastq', 
+			ref='ref.fasta'
+		output:
+			"reads.bam"
+		threads: 8
+		shell:
+			'''	
+			{sourceblasr}
+			# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
+			which minimap2 	
+			minimap2 \
+					-ax map-pb \
+					--cs \
+					-t {threads} \
+					-k 11 \
+					-A 3 \
+					-B 3 \
+					-O 9 \
+					-E 3 \
+					-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
+					ref.fasta {input.reads} | \
+					samtools view -bS -F 2308 - | \
+					samtools sort -m 4G -T tmp -o {output}
+			# cs adds a tag the generates info about insertion and deletion events 
+			# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
+			# actually i think I will allow chimeric, (allows jumps of large gaps)
+			# -A matching score -B mismatching score -E gap extenshion penalty 
+
+			samtools index {output}
+			'''
+
+
+
 else:
 	print("NO INPUT READS!!!")
 	exit()
@@ -137,7 +200,7 @@ rule index_realigned_reads:
 	input:
 		"reads.bam"		
 	output:
-		"reads.bam.bai"	
+		bai = "reads.bam.bai",
 	shell:
 		'samtools index {input}'	
 
@@ -159,7 +222,6 @@ rule reads_to_fasta:
 #
 rule depthFromBam:
     input:
-        reads="reads.fasta",
         bam="reads.bam",
     output:
         depth="snvs/depth.tsv"
@@ -175,21 +237,22 @@ rule depthFromBam:
 # lets just look at teh het profile
 #
 rule hetProfile:
-    input:
-        reads="reads.bam",
-        ref="ref.fasta"	,
-    output: 
-        nucfreq="snvs/nofilter.consensus.nucfreq",
-    shell:
-        """
+	input:
+		reads="reads.bam",
+		bai = "reads.bam.bai",
+		ref="ref.fasta"	,
+	output: 
+		nucfreq="snvs/nofilter.consensus.nucfreq",
+	shell:
+		"""
 		samtools mpileup -q 0 -Q 0 {input.reads} | \
 				{base}/MpileupToFreq.py  /dev/stdin | \
 				{base}/PrintHetFreq.py 0 \
-				--maxCount 100 \
+				--maxCount 10000000000000000 \
 				--minTotal 0 \
 				> {output.nucfreq}
 
-        """
+		"""
 
 rule thresholdProfile:
     input:
@@ -206,16 +269,13 @@ rule thresholdProfile:
 # Given the alignments, count the frequency of each base at every
 # position, and estimate the SNVs from this frequency. 
 #
-rule create_SNVtable_from_reads:
+rule create_nucfreq_from_reads:
 	input:
 		reads="reads.bam",
-		ref="ref.fasta"	,
-	output: 
-		snv="snvs/assembly.consensus.fragments.snv",
-		vcf="snvs/assembly.consensus.nucfreq.vcf",
+		bai = "reads.bam.bai",
+		ref="ref.fasta",
+	output:
 		nucfreq="snvs/assembly.consensus.nucfreq",
-		filt="snvs/assembly.consensus.nucfreq.filt",
-		frag="snvs/assembly.consensus.fragments",
 	shell:
 		"""
 		echo "Sam to nucfreq"
@@ -225,11 +285,49 @@ rule create_SNVtable_from_reads:
 				--maxCount {MINCOV} \
 				--minTotal {MINTOTAL} \
 				> {output.nucfreq}
-		
+		"""
+
+
+
+#
+# this adds an index to each read name, make it so it works with WhatsHap
+# It also adss a tlen that is the length of the alignment to the reference
+# this is to mimic what balsr would have done 
+# in addition it adds a SM tag to each read, this is for WhatsHap
+#
+rule AddIndextoReads:
+	input:
+		reads = "reads.bam",
+		bai = "reads.bam.bai",
+	output:
+		reads = "reads.sample.bam",
+		bai = "reads.sample.bam.bai",
+	shell:
+		"""
+		source {python3}
+		{base}/changeBamName.py {input.reads} {output.reads}
+		samtools index {output.reads}
+		"""
+
+
+
+rule create_SNVtable_from_reads:
+	input:
+		reads="reads.sample.bam",
+		ref="ref.fasta"	,
+		nucfreq="snvs/assembly.consensus.nucfreq",
+	output: 
+		snv="snvs/assembly.consensus.fragments.snv",
+		vcf="snvs/assembly.consensus.nucfreq.vcf",
+		filt="snvs/assembly.consensus.nucfreq.filt",
+		frag="snvs/assembly.consensus.fragments",
+	shell:
+		"""
 		echo "filter nucfreq"
-		samtools view -h {input.reads} | \
+		# this actaully only really creates the frag file, all filtering should be done by PrintHetfreq
+		samtools view -h reads.sample.bam | \
 				{base}/readToSNVList  \
-				--nft {output.nucfreq} \
+				--nft {input.nucfreq} \
 				--sam /dev/stdin \
 				--ref {input.ref} \
 				--minFraction 0.01 \
@@ -279,7 +377,7 @@ rule SNVtable_to_SNVmatrix:
 if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta") > 0 ):
 	rule depthOnDuplications:
 		input:
-			reads="reads.fasta",
+			reads="reads.bam",
 			ref = ancient( "duplications.fasta" ),
 		output:
 			bam = "dup/reads.dup.bam",
@@ -288,16 +386,32 @@ if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta
 		shell:
 			"""
 			{sourceblasr}
-			blasr -sam  \
-					-nproc {threads} -out /dev/stdout \
-					-minAlignLength 500 -preserveReadTitle -clipping subread \
-					{input.reads} {input.ref} | \
-					samtools view -bSh -F 4 - | \
-					samtools sort -T tmp -o {output.bam}
-			
+			if [ "blasr" == "noblasr" ]; then 
+				blasr -sam  \
+						-nproc {threads} -out /dev/stdout \
+						-minAlignLength 500 -preserveReadTitle -clipping subread \
+						{input.reads} {input.ref} | \
+						samtools view -bSh -F 4 - | \
+						samtools sort -T tmp -o {output.bam}
+			fi
+				
+			samtools fastq {input.reads} | \
+					minimap2 \
+					-ax map-pb \
+					--cs \
+					-k 11 \
+					-t {threads} \
+					ref.fasta /dev/stdin | \
+					samtools view -bS -F 2308 - | \
+					samtools sort -m 4G -T tmp -o {output}
+			samtools index {output}
+
 			samtools depth -aa {output.bam} > {output.depth}
 			"""
 
+
+# the below suff is to be removed in the future
+'''
 	rule realignReads_to_Dups:
 		input:
 			depth="dup/dup_depth.tsv",
@@ -329,7 +443,18 @@ else:
 			# this adds a fake catigory on the end
 			cat {input} | awk '{{ print $1"\t"$2"\tall"}}' > {output}
 			"""
+'''
 
+rule addFakeCatagoryToMatrix:
+	input:
+		"snvs/assembly.consensus.fragments.snv.mat"
+	output:
+		"snvs/assembly.consensus.fragments.snv.mat.categorized"
+	shell:
+		"""
+		# this adds a fake catigory on the end
+		cat {input} | awk '{{ print $1"\t"$2"\tall"}}' > {output}
+		"""
 
 #
 # This finds PSVs that are connected by a sufficient number of
@@ -338,6 +463,7 @@ else:
 rule createPSVgraph:
 	input:
 		matrix="snvs/assembly.consensus.fragments.snv.mat.categorized",
+        png="Coverage.png",
 		vcf="snvs/assembly.consensus.nucfreq.vcf"
 	output:
 		graph="CC/mi.gml",

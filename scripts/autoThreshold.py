@@ -40,7 +40,7 @@ first = np.array(first)
 second = np.array(second)
 third = np.array(third)
 truepos = np.array(truepos)
-truepos = pos
+#truepos = pos
 
 #plt.rc('font', family='serif')
 matplotlib.rcParams.update({'font.size': 18})

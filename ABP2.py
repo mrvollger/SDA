@@ -79,16 +79,19 @@ rule makeGroupDirs:
 # also requires that pysam is installed, should be taken care of by loading the whatshap anaconda env 
 rule phasedVCF:
     input: 'group.{n}/group.{n}',
-        vcf= 'group.{n}.vcf'
+        vcf= 'group.{n}.vcf',
+        hapbam= 'reads.sample.bam',
     output: 'group.{n}/phased.{n}.vcf'
     shell:
         """
 		source {python3}
-		{base}/fixVCF.py --out {output} --vcf {input.vcf}
+		{base}/fixVCF.py --out {output} --vcf {input.vcf} --bam {input.hapbam}
         """
 
 # whatshap requires unique bam entries, make those
 # also requires that pysam is installed, should be taken care of by loading the whatshap anaconda env 
+# this is now taken care of by ABP1
+'''
 rule bamForWhatsHap:
     input: "reads.bam", expand('group.{ID}.vcf', ID=IDS)
     output: 'reads.sample.bam'
@@ -97,7 +100,6 @@ rule bamForWhatsHap:
 		source {python3}
         {base}/changeBamName.py
         """
-
 # index reads.sample.bam
 rule indexWhatshapReads:
     input:'reads.sample.bam'
@@ -106,6 +108,7 @@ rule indexWhatshapReads:
         """
         samtools index {input}
         """ 
+'''
 
 # run whats hap and get the partitioned sam files
 rule whatsHap:
@@ -114,15 +117,18 @@ rule whatsHap:
         hapbai= 'reads.sample.bam.bai',
         hapvcf= 'group.{n}/phased.{n}.vcf'
     output: 
-        hap= 'group.{n}/haplotagged.bam',
-        hapH1= 'group.{n}/H1.WH.sam',
+        #hap= 'group.{n}/haplotagged.bam',
+        #hapH1= 'group.{n}/H1.WH.sam',
         hapH2= 'group.{n}/H2.WH.sam'
     shell:
         """
 		source {python3}
-		whatshap haplotag -o  {output.hap} {input.hapvcf} {input.hapbam} 
-        samtools view -h -o - {output.hap} | grep -E "^@|HP:i:1" >  {output.hapH1} 
-        samtools view -h -o - {output.hap} | grep -E "^@|HP:i:2" >  {output.hapH2}
+		whatshap haplotag {input.hapvcf} {input.hapbam} | \
+				samtools view -h -o - | \
+				grep -E "^@|HP:i:2" >  {output.hapH2}
+        
+		
+		#samtools view -h -o - output.hap | grep -E "^@|HP:i:1" >  output.hapH1
         """
 #-----------------------------------------------------------------------------------------------------#
 
@@ -513,7 +519,7 @@ if(os.path.exists("duplications.fasta")):
 
 	rule depthOnDuplications:
 		input:
-			reads="reads.fasta",
+			reads="reads.sample.bam",
 			ref = "duplications.fasta",
 		output:
 			bam = "asms/reads.dup.bam",
@@ -521,10 +527,11 @@ if(os.path.exists("duplications.fasta")):
 		threads:8
 		shell:
 			"""
-			{blasr} -sam  \
+			samtools fasta {input.reads} | \
+				{blasr} -sam  \
 					-nproc {threads} -out /dev/stdout \
 					-minAlignLength 500 -preserveReadTitle -clipping subread \
-					{input.reads} {input.ref} | \
+					/dev/stdin {input.ref} | \
 					samtools view -bSh -F 4 - | \
 					samtools sort -T tmp -o {output.bam}
 			
@@ -613,7 +620,7 @@ rule coverageOnAsms:
 	input:
 		asm = "WH.assemblies.fasta",
 		ref = "ref.fasta",
-		reads = "reads.fasta",
+		reads = "reads.sample.bam",
 	output:
 		cov="asms/asm_depth.tsv",
 		bam="asms/reads_on_asm.bam",
@@ -622,7 +629,8 @@ rule coverageOnAsms:
 	shell:
 		"""
 		cat {input.ref} {input.asm} > {output.refWH}
-		{blasr} {input.reads} {output.refWH} -clipping subread \
+		samtools fasta {input.reads} | \
+			{blasr} /dev/stdin {output.refWH} -clipping subread \
 				-nproc {threads} -bestn 1 -sam -out /dev/stdout | \
 				samtools view -bS - | \
 				samtools sort -m 4G -o {output.bam} - 

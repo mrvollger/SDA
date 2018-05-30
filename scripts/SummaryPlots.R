@@ -23,9 +23,9 @@ library(GenomicRanges)
 suppressPackageStartupMessages(library("argparse"))
 
 genome = "Mitchell_CHM1"
-genome = "CHM13"
-genome = "Yoruban_feb_2018"
 genome = "Mitchell_CHM1_V2"
+genome = "Yoruban_feb_2018"
+genome = "CHM13"
 
 
 asmdirs = strsplit( Sys.glob("~/Desktop/work/assemblies/*"), "/") 
@@ -267,10 +267,10 @@ rangeRes = makeGRangesFromDataFrame(df[df$Status == res, ], seqnames.field=c("be
 rangeDiv = makeGRangesFromDataFrame(df[df$Status == pr, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
 rangeMasm = makeGRangesFromDataFrame(df[df$Status == mAsm, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
 
-MBs = c( paste(round(sum(width(reduce(rangeDiv)))/10^6,1), "Mb"),
-  paste(round(sum(width(reduce(rangeRes)))/10^6,1), "Mb"),
+MBs = c( paste(round(sum(width(reduce(rangeDiv)))/10^6,1), "Mbp"),
+  paste(round(sum(width(reduce(rangeRes)))/10^6,1), "Mbp"),
   #NA,
-  paste(round(sum(width(reduce(rangeMasm)))/10^6,1), "Mb")   , NA)
+  paste(round(sum(width(reduce(rangeMasm)))/10^6,1), "Mbp")   , NA)
 names(MBs) = c(pr, res, mAsm, failed)
 MBs = data.frame(MBs)
 MBs
@@ -299,7 +299,7 @@ p0.1 = ggplot(fai, aes(x=fai[["Collapse Length"]] )) +
   geom_histogram(alpha=0.8, fill="black", binwidth=3000)  + 
   scale_fill_manual(values=col4) +
   scale_x_continuous( breaks=seq(0, top, by = by), labels=c( seq(0, (top-by)/1000, by = by/1000), "150+") ) +
-  xlab("Collapse length (kb)") + ylab("Counts")+ myTheme
+  xlab("Collapse length (kbp)") + ylab("Counts")+ myTheme
 p0.1
 mysave("CollapseLength.pdf", p0.1)
 
@@ -396,7 +396,7 @@ p8 = ggplot(dfs, aes(x=Status, y=Length/1000, fill=Status) ) +
   scale_color_manual(values=col4) +
   scale_y_continuous(labels = comma, breaks = round(seq(min(df$Length), max(df$Length), by = 25),1)) +
   #theme(axis.text.y = element_blank()) +
-  ylab("Assembly length (kb)") + xlab("Status")+ myTheme 
+  ylab("Assembly length (kbp)") + xlab("Status")+ myTheme 
 #p8
 mysave("assemblyLength.pdf",p8)
 #summary(dfr$Length)
@@ -408,7 +408,7 @@ corr = round(cor(dfu$copiesInRef, dfu$numOfCCgroups), 2)
 print(corr)
 p5 <- ggplot(dfu, aes(y=copiesInRef, x=numOfCCgroups)) + 
   geom_count() + coord_fixed() + geom_abline(intercept = 0, slope = 1, color="red") + 
-  ggtitle(paste("R-squared =",as.character(corr))) +
+  ggtitle(paste("r =",as.character(corr))) +
   myTheme
 #p5
 mysave("cc_copies.pdf", p5)
@@ -424,7 +424,7 @@ print(corr)
 p5 <- ggplot(dfs, aes(y=Length/1000, x=collapseLen/1000)) + 
   geom_point() + coord_fixed() + geom_abline(intercept = 0, slope = 1, color="red") + 
   ggtitle(paste("R-squared =",as.character(corr))) +
-  ylab("Assembly length (kb)") + xlab("Collapse length (kb)")+ myTheme +
+  ylab("Assembly length (kbp)") + xlab("Collapse length (kbp)")+ myTheme +
   scale_y_continuous(labels = comma) +
   scale_x_continuous(labels = comma)
 p5
@@ -547,7 +547,7 @@ p6.3 = ggplot() + geom_ribbon(data=temp, aes(x=bestPerID, ymin=0, ymax=ECDF, fil
   stat_ecdf(data=BPbyID, aes(bestPerID), pad=FALSE) +
   coord_cartesian(xlim=c(95, 100)) + 
   scale_y_continuous(breaks = seq(0, 1, 0.1), labels = round(seq(0, ymax, ymax/10)) ) +
-  ylab("Mb of Assembly") + xlab("Best Percent Identity Match") +
+  ylab("Mbp of Assembly") + xlab("Best Percent Identity Match") +
   theme(legend.background = element_rect(size=0.5, linetype="solid", color="black"), 
         legend.title=element_blank())
 
@@ -654,7 +654,7 @@ plotSegDups<-function(data, name1, name2, myColors){
   p1 <- ggplot(data, aes(x=aveRefLen, y=scaled, color=Status) ) + geom_point(size=2) + colScale +
     scale_x_continuous(trans='log10',labels = xkb, breaks = xbreaks) +
     scale_y_continuous(breaks = ybreaks, labels=ybreaks) + 
-    xlab("Segmental duplication length (kb)") + ylab("Percent sequence identity") + myTheme 
+    xlab("Segmental duplication length (kbp)") + ylab("Percent sequence identity") + myTheme 
   p1
   mysave(name1, p1)
   
@@ -665,7 +665,7 @@ plotSegDups<-function(data, name1, name2, myColors){
     colScale +
     scale_x_continuous(trans='log10',labels = xkb, breaks = xbreaks) +
     scale_y_continuous(breaks = ybreaks) + 
-    xlab("Segmental duplication length (kb)") + ylab("Percent sequence identity") + myTheme 
+    xlab("Segmental duplication length (kbp)") + ylab("Percent sequence identity") + myTheme 
   p2
   mysave(name2, p2)
   

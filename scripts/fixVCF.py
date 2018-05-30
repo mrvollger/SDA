@@ -26,16 +26,15 @@ vcf = re.sub("NA", "0", vcf)
 outbam = AlignmentFile( bam )
 
 # create a fake sample name 
-sampleName = re.findall("SM:[^\s]+", outbam.text )
+sampleName = re.findall("SM:[^(\s|\\\))]+", outbam.text )
 sampleName=list(set(sampleName))
+print(sampleName)
 
-assert len(sampleName)==1, "multiple sample names?"
+assert len(sampleName)==1, "multiple sample names?" + str(sampleName)
 sampleName = re.sub("SM:", "", sampleName[0])
 
-# repalce the sample name
+# replace the sample name
 vcf = re.sub("sample",sampleName,vcf)
-
-
 
 # make output vcf
 f = open(outvcf, "w+")

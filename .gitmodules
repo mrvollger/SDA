@@ -6,4 +6,7 @@
 	url = git://github.com/mchaisso/pbsamstream
 [submodule "externalRepos/pbgreedyphase"]
 	path = externalRepos/pbgreedyphase
-	url = https://github.com/mchaisso/pbgreedyphase
+	url = /net/eichler/vol2/home/mvollger/projects/abp/externalRepos/pbgreedyphase/
+[submodule "externalRepos/whatshap"]
+	path = externalRepos/whatshap
+	url = https://bitbucket.org/whatshap/whatshap
