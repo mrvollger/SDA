@@ -1158,7 +1158,7 @@ arrayScript = """#!/usr/bin/env  bash
 # this should be in the format -t 1-N_jobs
 #$ -t 1-{}
 # This is the number of concurrent jobs to run
-#$ -tc 100
+#$ -tc 50
 #
 # The remainder are options passed to the script
 #$ -S /bin/bash -V
