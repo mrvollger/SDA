@@ -22,6 +22,8 @@ scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts
 python3 = snake_dir + "env_python3.cfg"
 python2 = snake_dir + "env_python2.cfg"
 CANU_DIR=snake_dir + "software/canu/Linux-amd64/bin"
+oldenv=snake_dir + "old.env_python2.cfg"
+
 #
 #
 #
@@ -243,6 +245,7 @@ rule bamFromAssembly:
 		    > {output.asmbam}
             > {output.asmbas}
         else 
+			source {oldenv}
 			{samtobas} {input.H2} {output.asmbas} -defaultToP6
 			{blasr} {output.asmbas} {input.asm} \
                 -clipping subread -sam -bestn 1 -out /dev/stdout  -nproc {threads} \
@@ -268,7 +271,13 @@ rule quiverFromBam:
 		    > {output.quiver}
         else
             samtools faidx {input.asm}
-	        source {quiver_source}; {quiver} \
+			unset PYTHONPATH
+			module purge
+			. /etc/profile.d/modules.sh
+			module load modules modules-init modules-gs/prod modules-eichler
+			module load pitchfork
+	        #source {quiver_source}; {quiver} 
+			quiver \
 		        --noEvidenceConsensusCall nocall --minCoverage 10 -j {threads} \
 		        -r {input.asm} -o {output.quiver} {input.asmbam}
             

@@ -10,3 +10,6 @@
 [submodule "externalRepos/hdf5"]
 	path = externalRepos/hdf5
 	url = git://github.com/mortenpi/hdf5.git
+[submodule "externalRepos/pbsamstream"]
+	path = externalRepos/pbsamstream
+	url = https://github.com/mchaisso/pbsamstream.git

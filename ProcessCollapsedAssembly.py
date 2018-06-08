@@ -129,7 +129,7 @@ rule RepeateMasker:
 	output:
 		RMout = "reference/mask{idx}/ref.{idx}.fasta.out"
 	params:
-		cluster=" -pe serial 4 -l mfree=4G -l h_rt=12:00:00",
+		cluster=" -pe serial 4 -l mfree=8G -l h_rt=12:00:00",
 	shell:
 		"""
 		dir=reference/mask{wildcards.idx}
@@ -996,14 +996,15 @@ rule duplicationsFasta:
 		dupsam="LocalAssemblies/all.ref.fasta.sam",
 	params:
 		blasr=config["blasr"],
-		cluster=" -pe serial 4 -l mfree=8G -l h_rt=12:00:00",
+		cluster=" -pe serial 8 -l mfree=8G -l h_rt=12:00:00",
 	threads: 8
 	shell:
 		"""
 		samtools faidx {input.dupref}
-		if [ "blasr" == "noblasr" ]; then 
-			source {python2}
+		if [ "blasr" == "blasr" ]; then 
 			# for some reason blasr (43) wokrs mcuh better for this than params.blasr (46)
+			# module load zlib/1.2.6 hdf5/1.8.15-cxxenabled blasr/rc43
+			source {python2}
 			blasr -nproc {threads} -sa {sa} -sam -out /dev/stdout \
 				-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
 				{input.dupref} {GRCh38} | \
@@ -1016,7 +1017,7 @@ rule duplicationsFasta:
 					--cs \
 					-t {threads} \
 					{GRCh38} {input.dupref} | \
-					samtools view -h -F 2052 - | \
+					samtools view -h -F 4 - | \
 					samtools sort -m 4G -T tmp -o {output.dupsam}
 			# cs adds a tag the generates info about insertion and deletion events 
 			# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
@@ -1144,6 +1145,7 @@ rule GenerateBatchRunScript:
 	input:
 		regions="LocalAssemblies/regions.txt",
 		refdone = rules.getReferenceSequences.output.refDone,
+		mydone = rules.intersectGenes.output.mydone,
 	output:
 		array = "LocalAssemblies/RunAssembliesByArray.sh",
 	run:
