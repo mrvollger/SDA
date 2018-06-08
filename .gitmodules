@@ -1,9 +1,6 @@
 [submodule "externalRepos/blasr"]
 	path = externalRepos/blasr
 	url = git://github.com/mchaisso/blasr
-[submodule "externalRepos/pbgreedyphase"]
-	path = externalRepos/pbgreedyphase
-	url = /net/eichler/vol2/home/mvollger/projects/abp/externalRepos/pbgreedyphase/
 [submodule "externalRepos/pbsamstream"]
 	path = externalRepos/pbsamstream
 	url = https://github.com/mchaisso/pbsamstream.git
