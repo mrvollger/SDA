@@ -3,10 +3,10 @@
 	url = git://github.com/mchaisso/blasr
 [submodule "externalRepos/pbsamstream"]
 	path = externalRepos/pbsamstream
-	url = git://github.com/mchaisso/pbsamstream
+	url = https://github.com/mchaisso/pbsamstream.git
 [submodule "externalRepos/pbgreedyphase"]
 	path = externalRepos/pbgreedyphase
-	url = /net/eichler/vol2/home/mvollger/projects/abp/externalRepos/pbgreedyphase/
+        url = git://github.com/mchaisso/pbgreedyphase.git
 [submodule "externalRepos/whatshap"]
 	path = externalRepos/whatshap
 	url = https://bitbucket.org/whatshap/whatshap
