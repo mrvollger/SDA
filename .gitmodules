@@ -4,3 +4,6 @@
 [submodule "externalRepos/pbsamstream"]
 	path = externalRepos/pbsamstream
 	url = https://github.com/mchaisso/pbsamstream.git
+[submodule "externalRepos/pbgreedyphase"]
+	path = externalRepos/pbgreedyphase
+	url = git://github.com/mchaisso/pbgreedyphase.git
