@@ -66,7 +66,7 @@ if(os.path.exists("reads.orig.bam")):
 		shell: 
 			'''
 			{sourceblasr}
-			if [ 'noblasr' == 'blasr' ]; then 
+			if [ 'blasr' == 'blasr' ]; then 
 				echo "Running Blasr"
 				which blasr
 				# the grep line removes references to previous alignment references 
@@ -386,7 +386,7 @@ if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta
 		shell:
 			"""
 			{sourceblasr}
-			if [ "blasr" == "noblasr" ]; then 
+			if [ "blasr" == "blasr" ]; then 
 				blasr -sam  \
 						-nproc {threads} -out /dev/stdout \
 						-minAlignLength 500 -preserveReadTitle -clipping subread \

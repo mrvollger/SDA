@@ -4,12 +4,6 @@
 [submodule "externalRepos/pbgreedyphase"]
 	path = externalRepos/pbgreedyphase
 	url = /net/eichler/vol2/home/mvollger/projects/abp/externalRepos/pbgreedyphase/
-[submodule "externalRepos/whatshap"]
-	path = externalRepos/whatshap
-	url = https://bitbucket.org/whatshap/whatshap
-[submodule "externalRepos/hdf5"]
-	path = externalRepos/hdf5
-	url = git://github.com/mortenpi/hdf5.git
 [submodule "externalRepos/pbsamstream"]
 	path = externalRepos/pbsamstream
 	url = https://github.com/mchaisso/pbsamstream.git

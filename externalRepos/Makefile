@@ -1,6 +1,6 @@
-#all: pbsamstream/hdf5/build/lib/libhdf5.a \
+all: pbsamstream/hdf5/build/lib/libhdf5.a \
 	blasr/alignment/bin/blasr
-all: hdf5/build/lib/libhdf5.so \
+#all: hdf5/build/lib/libhdf5.so \
 	blasr/alignment/bin/blasr
 
 
