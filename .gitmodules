@@ -10,3 +10,21 @@
 [submodule "externalRepos/whatshap"]
 	path = externalRepos/whatshap
 	url = https://bitbucket.org/whatshap/whatshap
+[submodule "externalRepos/ConsensusCore"]
+	path = externalRepos/ConsensusCore
+	url = https://github.com/pacificbiosciences/consensuscore
+[submodule "externalRepos/GenomicConsensus"]
+	path = externalRepos/GenomicConsensus
+	url = https://github.com/pacificbiosciences/genomicconsensus
+[submodule "externalRepos/pbcommand"]
+	path = externalRepos/pbcommand
+	url = https://github.com/pacificbiosciences/pbcommand
+[submodule "externalRepos/pbbam"]
+	path = externalRepos/pbbam
+	url = https://github.com/pacificbiosciences/pbbam
+[submodule "externalRepos/hdf5"]
+	path = externalRepos/hdf5
+	url = https://github.com/mortenpi/hdf5.git
+[submodule "externalRepos/htslib"]
+	path = externalRepos/htslib
+	url = https://github.com/samtools/htslib
