@@ -6,4 +6,25 @@
 	url = https://github.com/mchaisso/pbsamstream.git
 [submodule "externalRepos/pbgreedyphase"]
 	path = externalRepos/pbgreedyphase
-	url = git://github.com/mchaisso/pbgreedyphase.git
+        url = git://github.com/mchaisso/pbgreedyphase.git
+[submodule "externalRepos/whatshap"]
+	path = externalRepos/whatshap
+	url = https://bitbucket.org/whatshap/whatshap
+[submodule "externalRepos/ConsensusCore"]
+	path = externalRepos/ConsensusCore
+	url = https://github.com/pacificbiosciences/consensuscore
+[submodule "externalRepos/GenomicConsensus"]
+	path = externalRepos/GenomicConsensus
+	url = https://github.com/pacificbiosciences/genomicconsensus
+[submodule "externalRepos/pbcommand"]
+	path = externalRepos/pbcommand
+	url = https://github.com/pacificbiosciences/pbcommand
+[submodule "externalRepos/pbbam"]
+	path = externalRepos/pbbam
+	url = https://github.com/pacificbiosciences/pbbam
+[submodule "externalRepos/htslib"]
+	path = externalRepos/htslib
+	url = https://github.com/samtools/htslib
+[submodule "externalRepos/h5py"]
+	path = externalRepos/h5py
+	url = https://github.com/h5py/h5py
