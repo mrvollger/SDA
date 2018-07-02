@@ -47,13 +47,12 @@ environments/python2.7/lib/python2.7/site-packages/ConsensusCore-1.0.2-py2.7.egg
 	source ./environments/python2.7/bin/activate && \
   cd externalRepos/ConsensusCore && python setup.py install_egg_info
 
-quiver/lib/python2.7/site-packages/pbcommand-1.0.0-py2.7.egg:
+environments/python2.7/lib/python2.7/site-packages/pbcommand-1.0.0-py2.7.egg:
 	mkdir -p quiver/lib/python2.7/site-packages/
 	cd externalRepos/pbcommand && python setup.py build && \
-    export PYTHONPATH=$$PYTHONPATH:$(PWD)/quiver/lib/python2.7/site-packages/ && \
-    python setup.py install  --prefix=$(PWD)/quiver/
+    python setup.py install 
 
-quiver/bin/quiver: environments/python2.7/lib/python2.7/site-packages/ConsensusCore-1.0.2-py2.7.egg/ConsensusCore.py quiver/lib/python2.7/site-packages/pbcommand-1.0.0-py2.7.egg environments/python2.7/bin/activate environments/python2.7/lib/python2.7/site-packages/h5py-2.8.0.post0-py2.7-linux-x86_64.egg environments/python2.7/lib/python2.7/site-packages/ConsensusCore-1.0.2-py2.7.egg-info
+quiver/bin/quiver: environments/python2.7/lib/python2.7/site-packages/ConsensusCore-1.0.2-py2.7.egg/ConsensusCore.py environments/python2.7/lib/python2.7/site-packages/pbcommand-1.0.0-py2.7.egg environments/python2.7/bin/activate environments/python2.7/lib/python2.7/site-packages/h5py-2.8.0.post0-py2.7-linux-x86_64.egg environments/python2.7/lib/python2.7/site-packages/ConsensusCore-1.0.2-py2.7.egg-info
 	mkdir -p quiver/lib/python2.7/site-packages/
 	source $(PWD)/environments/python2.7/bin/activate && \
     cd externalRepos/GenomicConsensus && \
