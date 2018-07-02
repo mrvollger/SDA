@@ -164,10 +164,10 @@ plotKP <- function(chrs, dopdf=FALSE, name="ideogram", all=FALSE){
 #
 # plot commands 
 #
-subset = c("chr1","chr2", "chr9", "chr16", "chr14")
+subset = c("chr1", "chr16")
 plotKP(chrs=subset)
 if(T){
-  subset = c("chr1","chr2", "chr9", "chr16", "chr14")
+  subset = c("chr1", "chr16")
   plotKP(subset, dopdf=T, name="subset")
   plotKP(all=T, dopdf=T, name="ideogram")
   for(chr in levels(seqnames(asm))){
@@ -176,7 +176,16 @@ if(T){
   }
 }
 
+if(T){
+sds = c(res, unres); sds = sds[ width(sds) > 50000,]
+kp <- plotKaryotype(genome="hg38", plot.type = 2, chr = chrs)
+kpPlotRegions(kp, data=asm.long, col=asm.long.color, layer.margin = 0.05, r0=0, r1=.33, data.panel = 2)
+kpPlotRegions(kp, data=reduce(asm.short), col=asm.short.color, layer.margin = 0.05, r0=.33, r1=0.66, data.panel = 2)
 
+kpPlotRegions(kp, data=sds, col=unres.color, layer.margin = 0.05, r0=.66, r1=1, data.panel = 2)
+
+
+}
 
 sum(width(reduce(highid)))/10^6
 sum(width(reduce(lowid)))/10^6
