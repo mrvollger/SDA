@@ -28,3 +28,6 @@
 [submodule "externalRepos/h5py"]
 	path = externalRepos/h5py
 	url = https://github.com/h5py/h5py
+[submodule "externalRepos/hdf5"]
+	path = externalRepos/hdf5
+	url = https://github.com/mortenpi/hdf5.git
