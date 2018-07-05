@@ -1,4 +1,4 @@
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(echo $(dirname $(which python))/../lib)
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(echo $(dirname $(dirname $(which python) ))/lib/)
 virtualenv environments/python2.7 --python=`which python`
 source environments/python2.7/bin/activate
 p=./environments/python2.7/bin/python
