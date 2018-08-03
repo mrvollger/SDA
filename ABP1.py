@@ -66,7 +66,7 @@ if(os.path.exists("reads.orig.bam")):
 		shell: 
 			'''
 			{sourceblasr}
-			if [ 'blasr' == 'blasr' ]; then 
+			if [ 'blasrno' == 'blasr' ]; then 
 				echo "Running Blasr"
 				which blasr
 				# the grep line removes references to previous alignment references 
