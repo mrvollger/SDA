@@ -29,7 +29,13 @@ oldenv=snake_dir + "old.env_python2.cfg"
 #
 
 configfile:
-	"abp.config.json"	
+	"abp.config.json"
+
+ISONT=False
+if("ont" in config):
+	if(config["ont"].lower() in ["t", "true"] ):
+		ISONT=True
+
 # min cov is used to detemrine the filter for getting rid of low read assemblies. 
 MINREADS = int(config["MINCOV"]*1.0/2.0)
 
@@ -155,9 +161,12 @@ rule readsFromSam:
 			|| touch group.{wildcards.n}/{wildcards.prefix}.temp.txt
 
 		if [ -s group.{wildcards.n}/{wildcards.prefix}.temp.txt ]; then
-			cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {base}/StreamSamToFasta.py | \
-					{base}/FormatFasta.py --fakename  > \
-					{output.pfasta};
+			
+			samtools fasta {input.H2} > {output.pfasta} 
+			
+			#cat group.{wildcards.n}/{wildcards.prefix}.temp.txt | {base}/StreamSamToFasta.py | \
+			#		{base}/FormatFasta.py --fakename  > \
+			#		{output.pfasta};
         else
             >&2 echo " no real assembly"
             touch {output.pfasta};
@@ -165,6 +174,10 @@ rule readsFromSam:
 
         rm -f group.{wildcards.n}/{wildcards.prefix}.temp.txt 
         """
+
+datatype = " -pacbio-raw "
+if(ISONT):
+	datatype = " -nanopore-raw "
 
 # run the assembly
 rule runAssembly:
@@ -178,7 +191,7 @@ rule runAssembly:
 
         if [ -s {input} ]; then
             #module load java/8u25 && {CANU_DIR}/canu -pacbio-raw {input} 
-            canu -pacbio-raw {input} \
+            canu {datatype} {input} \
 				genomeSize=60000 \
 				corOutCoverage=300 \
 				corMhapSensitivity=high \
@@ -226,67 +239,78 @@ rule assemblyReport:
         fi
         """ 
 
+if( ISONT ):
+	rule makeFakeCorrected:
+		input:
+			asm= 'group.{n}/{prefix}.assembly.fasta'
+		output:
+			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
+		threads: 4
+		shell:
+			"""
+			cp {input.asm} {output.quiver}
+			"""
+else:
+	# if samtobas fails it is becasue we started with no qual information and it kills it
+	rule bamFromAssembly:
+		input:
+			asm= 'group.{n}/{prefix}.assembly.fasta',
+			H2= 'group.{n}/H2.{prefix}.sam',
+			preads='group.{n}/{prefix}.reads.fasta',
+		output: 
+			asmbam= 'group.{n}/{prefix}.assembly.bam',
+			asmbas= 'group.{n}/{prefix}.reads.bas.h5'
+		threads: 4
+		shell:
+			"""
+			if [ ! -s {input.asm} ] 
+			then
+				# create empty files, this will allow other rules to conitnue 
+				> {output.asmbam}
+				> {output.asmbas}
+			else 
+				source {oldenv}
+				{samtobas} {input.H2} {output.asmbas} -defaultToP6
+				{blasr} {output.asmbas} {input.asm} \
+					-clipping subread -sam -bestn 1 -out /dev/stdout  -nproc {threads} \
+					| samtools view -bS - | samtools sort -m 4G -T tmp -o {output.asmbam}
+				
+				samtools index {output.asmbam}
+			fi
+			"""
 
-# if samtobas fails it is becasue we started with no qual information and it kills it
-rule bamFromAssembly:
-    input:
-        asm= 'group.{n}/{prefix}.assembly.fasta',
-        H2= 'group.{n}/H2.{prefix}.sam', # samtobas is not robust enough to work if I start without qual info so using fasta
-        preads='group.{n}/{prefix}.reads.fasta',
-    output: 
-        asmbam= 'group.{n}/{prefix}.assembly.bam',
-        asmbas= 'group.{n}/{prefix}.reads.bas.h5'
-    threads: 4
-    shell:
-        """
-        if [ ! -s {input.asm} ] 
-	    then
-            # create empty files, this will allow other rules to conitnue 
-		    > {output.asmbam}
-            > {output.asmbas}
-        else 
-			source {oldenv}
-			{samtobas} {input.H2} {output.asmbas} -defaultToP6
-			{blasr} {output.asmbas} {input.asm} \
-                -clipping subread -sam -bestn 1 -out /dev/stdout  -nproc {threads} \
-                | samtools view -bS - | samtools sort -m 4G -T tmp -o {output.asmbam}
-	        
-            samtools index {output.asmbam}
-        fi
-        """
-
-rule quiverFromBam:
-    input:
-        asmbam= 'group.{n}/{prefix}.assembly.bam',
-        asm= 'group.{n}/{prefix}.assembly.fasta'
-    output:
-        quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
-    threads: 4
-    shell:
-        '''
-        # check 
-        if [ ! -s {input.asm} ] 
-	    then
-            # create empty files, this will allow other rules to conitnue 
-		    > {output.quiver}
-        else
-            samtools faidx {input.asm}
-			unset PYTHONPATH
-			module purge
-			. /etc/profile.d/modules.sh
-			module load modules modules-init modules-gs/prod modules-eichler
-			module load pitchfork
-	        #source {quiver_source}; {quiver} 
-			quiver \
-		        --noEvidenceConsensusCall nocall --minCoverage 10 -j {threads} \
-		        -r {input.asm} -o {output.quiver} {input.asmbam}
-            
-            # add the head of the non quivered file
-            header=$(head -n 1 {input.asm})
-            header2=">group.{wildcards.n}_quiver "$(echo $header | sed -e 's/>//')
-            sed -i "1s/.*/$header2/" {output.quiver} 
-        fi
-        '''
+	rule quiverFromBam:
+		input:
+			asmbam= 'group.{n}/{prefix}.assembly.bam',
+			asm= 'group.{n}/{prefix}.assembly.fasta'
+		output:
+			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
+		threads: 4
+		shell:
+			'''
+			# check 
+			if [ ! -s {input.asm} ] 
+			then
+				# create empty files, this will allow other rules to conitnue 
+				> {output.quiver}
+			else
+				samtools faidx {input.asm}
+				unset PYTHONPATH
+				module purge
+				. /etc/profile.d/modules.sh
+				module load modules modules-init modules-gs/prod modules-eichler
+				module load pitchfork
+				#source {quiver_source}; {quiver} 
+				quiver \
+					--noEvidenceConsensusCall nocall --minCoverage 10 -j {threads} \
+					-r {input.asm} -o {output.quiver} {input.asmbam}
+				
+				# add the head of the non quivered file
+				header=$(head -n 1 {input.asm})
+				header2=">group.{wildcards.n}_quiver "$(echo $header | sed -e 's/>//')
+				sed -i "1s/.*/$header2/" {output.quiver} 
+			fi
+			'''
 #-----------------------------------------------------------------------------------------------------#
 
 
@@ -439,8 +463,13 @@ if(os.path.exists("duplications.fasta")):
 		shell:
 			"""
 			mkdir -p truth
-
-			{blasr43} {input.dup} {input.ref} -sam -bestn 1 -clipping subread > {output.refsam} 
+			
+			source {python3}
+			minimap2 -t {threads} -x asm20 -a --eqx {input.ref} {input.dup} | \
+				samtools view -h -F 2308 - | samtools sort -m 4G -T tmp -o {output.refsam}
+			
+			# old blasr map
+			#{blasr43} {input.dup} {input.ref} -sam -bestn 1 -clipping subread > {output.refsam} 
 
 			source {python2}
 
@@ -498,17 +527,28 @@ if(os.path.exists("duplications.fasta")):
 		threads: 8
 		shell:
 			"""
-			{blasr} -nproc {threads} -sam -clipping subread -out /dev/stdout \
-				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
-				{input.asmWH} {input.ref} | \
-				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.refsam}
+			source {python3}
+			minimap2 -t {threads} -x asm20 -a --eqx {input.ref} {input.asmWH} | \
+				samtools view -h -F 2308 - | samtools sort -m 4G -T tmp -o {output.refsam}
 			
-			{blasr} -nproc {threads} -sam -clipping subread -out /dev/stdout \
-				-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
-				{input.asmWH} {input.dup} | \
-				samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
+			
+			minimap2 -t {threads} -x asm20 -a --eqx {input.dup} {input.asmWH} | \
+				samtools view -h -F 2308 - | samtools sort -m 4G -T tmp -o {output.dupsam}
 			
 			"""
+##### Old balse run ####		
+	"""
+	{blasr} -nproc {threads} -sam -clipping subread -out /dev/stdout \
+		-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
+		{input.asmWH} {input.ref} | \
+		samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.refsam}
+	
+	{blasr} -nproc {threads} -sam -clipping subread -out /dev/stdout \
+		-bestn 1 -minMatch 11 -maxMatch 15 -nCandidates 50 \
+		{input.asmWH} {input.dup} | \
+		samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
+	
+	"""
 
 	rule getTablesFromSam:
 		input:
@@ -534,7 +574,24 @@ if(os.path.exists("duplications.fasta")):
 			bam = "asms/reads.dup.bam",
 			depth="asms/dup_depth.tsv",
 		threads:8
-		shell:
+		run:
+			tag=""
+			if(ISONT):
+				tag="map-ont"
+			else:
+				tag = "map-bp"
+
+			cmd1 = """ source {python3}
+			samtools fasta {input.reads} | \
+				minimap2 -t {threads} -x """ 
+			cmd2 = """ -a --eqx {input.ref} /dev/stdin | \
+				samtools view -bS -F 2308 - | samtools sort -m 4G -T tmp -o {output.bam}
+			samtools depth -aa {output.bam} > {output.depth}
+			"""
+			shell(cmd1 + tag + cmd2)
+			
+			
+			#old blasr command 
 			"""
 			samtools fasta {input.reads} | \
 				{blasr} -sam  \
@@ -543,8 +600,6 @@ if(os.path.exists("duplications.fasta")):
 					/dev/stdin {input.ref} | \
 					samtools view -bSh -F 4 - | \
 					samtools sort -T tmp -o {output.bam}
-			
-			samtools depth -aa {output.bam} > {output.depth}
 			"""
 
 
@@ -635,17 +690,34 @@ rule coverageOnAsms:
 		bam="asms/reads_on_asm.bam",
 		refWH="asms/refAndWH.fasta",
 	threads:8
-	shell:
-		"""
-		cat {input.ref} {input.asm} > {output.refWH}
-		samtools fasta {input.reads} | \
-			{blasr} /dev/stdin {output.refWH} -clipping subread \
-				-nproc {threads} -bestn 1 -sam -out /dev/stdout | \
-				samtools view -bS - | \
-				samtools sort -m 4G -o {output.bam} - 
-				samtools index {output.bam}
-		samtools depth -aa {output.bam} > {output.cov}
-		"""
+	run:
+			tag=""
+			if(ISONT):
+				tag="map-ont"
+			else:
+				tag = "map-bp"
+
+			cmd1 = """ source {python3}
+			cat {input.ref} {input.asm} > {output.refWH}
+			samtools fasta {input.reads} | \
+				minimap2 -t {threads} -x """ 
+			cmd2 = """ -a --eqx {output.refWH} /dev/stdin | \
+				samtools view -bS -F 2308 - | samtools sort -m 4G -T tmp -o {output.bam}
+			samtools depth -aa {output.bam} > {output.cov}
+			"""
+			shell(cmd1 + tag + cmd2)
+		
+	# run old blasr mapping	
+	"""
+	cat {input.ref} {input.asm} > {output.refWH}
+	samtools fasta {input.reads} | \
+		{blasr} /dev/stdin {output.refWH} -clipping subread \
+			-nproc {threads} -bestn 1 -sam -out /dev/stdout | \
+			samtools view -bS - | \
+			samtools sort -m 4G -o {output.bam} - 
+			samtools index {output.bam}
+	samtools depth -aa {output.bam} > {output.cov}
+	"""
 
 rule plotCovOnAsm:
 	input:
@@ -657,30 +729,6 @@ rule plotCovOnAsm:
 		source {python3}
 		{base}/plotDepth.py {input.cov} {output.plot}
 		"""
-
-#
-#
-#
-rule miropeats:
-	input:
-		refWH="asms/refAndWH.fasta",
-	output:
-		miro = "asms/refWH.miro.pdf",
-	shell:
-		"""
-		miropeats -s 500 -onlyinter {input.refWH} 
-		if [ -f threshold500 ]
-		then
-			mv threshold500 temp.ps
-			ps2pdf temp.ps {output.miro}
-			rm temp.ps
-		else
-			touch {output.miro}
-		fi
-		
-		"""
-
-
 
 
 
@@ -750,7 +798,6 @@ else:
 rule final:
 	input:
 		combine='WH.assemblies.fasta',
-		miro = "asms/refWH.miro.pdf",
 		plot="CoverageOnAsm.png",
 		truth="truth/README.txt",
 		asmbed="asm.bed",

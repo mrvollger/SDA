@@ -40,6 +40,8 @@ reference = config["asm"]
 print("The reference is this file: {}".format(reference))
 
 
+
+
 localrules: all, 
 			BedForCollapses,
 			GetOneKregionCoverage,
@@ -318,6 +320,19 @@ rule SplitFOFN:
 		done
 		"""
 
+
+rule indexForMinimap:
+	input:
+		reference,
+	output:
+		mmi=reference + ".mmi"
+	params:
+		cluster=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
+	shell:
+		"""
+		minimap2 -d {output} {input}
+		"""
+
 #
 #  For read depth, and other future steps, it is necessary to map reads back to the assembly.
 #
@@ -325,26 +340,46 @@ rule MapReads:
 	input:
 		asm=reference,
 		asmsa=reference + ".sa",
-		fofn="fofns/reads.{index}.fofn"
+		mmi=reference + ".mmi",
+		fofn="fofns/reads.{index}.fofn",
 	output:
 		align="alignments/align.{index}.bam"
 	params:
 		cluster=" -pe serial 8 -l mfree=8G -l h_rt=24:00:00",
 		blasr=config["blasr"]
 	threads: 8
-	shell:
-		"""
-		source {python2}
-		# bestn 2 is because a asm might be fragmented in half and we want
-		# a read to be able to map to both halves.
-		# not sure if mapQV should be 0 or 30, Mark said 0 was probably a msitake and to use 30
-		{params.blasr} {input.fofn} {input.asm}  -sa {input.asmsa} \
-			-sdpTupleSize 13  -sdpMaxAnchorsPerPosition 10 -maxMatch 25 \
-			-minMapQV 30 -bestn 2 -advanceExactMatches 15  \
-            -clipping subread -nproc {threads} -sam -out /dev/stdout | \
-            samtools view -bS -F 4 - | \
-            samtools sort -T {TMPDIR}/blasr -@ 8 -m 8G - -o {output.align}
-        """
+	run:
+		ISPB=True
+		if( "ont" in config ):
+			if(config["ont"] == True):
+				ISPB=False
+
+		if(ISPB):
+			shell("""
+			source {python2}
+			# bestn 2 is because a asm might be fragmented in half and we want
+			# a read to be able to map to both halves.
+			# not sure if mapQV should be 0 or 30, Mark said 0 was probably a msitake and to use 30
+			{params.blasr} {input.fofn} {input.asm}  -sa {input.asmsa} \
+				-sdpTupleSize 13  -sdpMaxAnchorsPerPosition 10 -maxMatch 25 \
+				-minMapQV 30 -bestn 2 -advanceExactMatches 15  \
+				-clipping subread -nproc {threads} -sam -out /dev/stdout | \
+				samtools view -bS -F 4 - | \
+				samtools sort -T {TMPDIR}/blasr -@ 8 -m 8G - -o {output.align}
+			""")
+		else: # the reads are ont or not foramted like pb
+			print("Running minimap2 on ONT")
+			shell("""
+			minimap2 \
+				-ax map-ont \
+				--cs -L \
+				-t {threads} \
+				{input.mmi} $(cat {input.fofn}) | \
+				samtools view -bS -F 2308 - | \
+				samtools sort -m 8G -T {TMPDIR}/minimap2 -o {output.align}
+			""")
+
+
 #
 # index the alignments
 # 
@@ -377,10 +412,14 @@ rule BamToBed:
         samutils=config["mcutils"]
     shell:
         """
-		source {python2}
-        samtools view {input.bam} | \
-				{params.samutils}/samToBed /dev/stdin --reportIdentity |
+
+		bedtools bamtobed -i {input.bam} | \
 				bedtools sort -i - > {output.bed}
+
+		#source {python2}
+        #samtools view {input.bam} | \
+		#		{params.samutils}/samToBed /dev/stdin --reportIdentity |
+		#		bedtools sort -i - > {output.bed}
         """
 
 #
