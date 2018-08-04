@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+
+
+import argparse
+import ABPUtils
+import numpy as np
+import sys
+import networkx as nx
+import pickle
+import IPython
+
+ap = argparse.ArgumentParser(description="Sort by haplotype")
+ap.add_argument("mat", help="snv matrix file")
+ap.add_argument("-f", help="Allele fraction", default=0.25,type=float)
+ap.add_argument("--mi",help="Write mutual information to a file", default=None)
+ap.add_argument("--thresh", help="Fixed cutoff for mutual information.", default=0,type=int)
+ap.add_argument("--graph", help="Write file here", default=None)
+#args = ap.parse_args('assembly.consensus.fragments.snv.mat.categorized')
+
+args = ap.parse_args()
+matFile = open(args.mat)
+mat = ABPUtils.ReadGenotypeMatrix(matFile)
+gt = mat['mat']
+
+mi = ABPUtils.FindMutualInformation(gt,args.f, mat['groupList'], args.mi)
+
+mig = nx.Graph()
+for i in mi.keys():
+    mig.add_node(i)
+for i in mi.keys():
+    for j in mi[i].keys():
+        if (mi[i][j] >= args.thresh):
+            mig.add_edge(i,j,weight=mi[i][j])
+
+if (args.graph is not None):
+    ABPUtils.WriteGraph(mig, args.graph)
+
+    
+#IPython.embed()
