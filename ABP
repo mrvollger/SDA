@@ -7,27 +7,23 @@ NPROC=$(nproc)
 regionsDir=$1
 pushd $regionsDir
 
-# sometimes snakemake fails in a really bad way and it leaves to lock on the dir
-# this is probably bad practive but oh well
-if [ "unlock" == "unlockx" ]; then
-    snakemake --unlock -s $DIR/ABP1.py
-    snakemake --unlock -s $DIR/ABP2.py
-fi
 
+ABP1="snakemake --rerun-incomplete -p --cores $NPROC -s $DIR/ABP1.py $2 $3 $4"
+ABP2="snakemake --rerun-incomplete -p --cores $NPROC -s $DIR/ABP2.py $2 $3 $4"
 
 # run the pipeline
 if [ "$1" == "ABP1" ]; then
-    # creats the partitioned groups from reads.orin.bam ref.fasta, and duplicaitons.fasta
-    snakemake -p -s $DIR/ABP1.py
+	$ABP1 
 elif [ "$1" == "ABP2" ]; then
-    # creats the assemblies from the output of PSV1.py
-    snakemake -p -s $DIR/ABP2.py
+	$ABP2
 else
-    echo "Running ABP1 and ABP2"
-    snakemake --rerun-incomplete -p --cores $NPROC -s $DIR/ABP1.py \
-		&& snakemake --rerun-incomplete -p --cores $NPROC -s $DIR/ABP2.py 
+	$ABP1 && $ABP2
 fi 
 
+
+
+
 popd
+
 
 

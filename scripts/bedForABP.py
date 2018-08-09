@@ -69,10 +69,9 @@ summary = open("summary.txt").read()
 html += "<pre>" + summary + "</pre>"
 html += "<a href=https://eichlerlab.gs.washington.edu/help/mvollger/{}/psvGraphs/{}.pdf>PSVgraph</a><br>".format(track, collapse)
 html += "<a href=https://eichlerlab.gs.washington.edu/help/mvollger/{}/psvGraphs/{}.png>CoverageGraph</a><br>".format(track, collapse)
-html = string.replace(html, "\n", "<br>")
-html = string.replace(html, "\t", " ")
+html = str.replace(html, "\n", "<br>")
+html = str.replace(html, "\t", " ")
 html = getGenomeBrowserLinks(html)
-#html = string.replace(html, " ", "&nbsp")
 open(collapse + ".html", "w+").write(html)
 
 

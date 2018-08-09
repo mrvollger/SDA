@@ -16,19 +16,12 @@ MINCOV=config["MINCOV"]
 MAXCOV=config["MAXCOV"]
 MINTOTAL=config["MINTOTAL"]
 
-blasr = snake_dir + "software/blasr/bin/blasr"
-sourceblasr = "source {}env_blasr.cfg".format( snake_dir ) # get the balsr enviorment from the balsr env file
-blasr43 = snake_dir + "software/blasr/bin/blasr43"
-samtobas = snake_dir + "software/blasr/bin/samtobas"
-quiver = snake_dir + "software/quiver/quiver"
-quiver_source = snake_dir + "software/quiver/setup_quiver.sh"
 base = snake_dir + "scripts/"
-scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
+#scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
+scriptsDir = snake_dir + "CCscripts/"
 python3 = snake_dir + "env_python3.cfg"
 python2 = snake_dir + "env_python2.cfg"
-#
-#
-#
+
 
 print(snake_dir)
 print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
@@ -46,14 +39,12 @@ rule all:
 # deletion.
 #
 minaln="500"
-if(os.path.exists("reads.orig.bam")):
-	rule preprocess_reads:
-		input:
-			'reads.orig.bam'
-		output:
-			'reads.bas.h5'
-		shell:
-			'samtools view -h {input} | {samtobasi} /dev/stdin {output}'
+ISPB=True
+if("ont" in config):
+	if(config["ont"] == "True"):
+		ISPB=False
+
+if(os.path.exists("reads.orig.bam") and ISPB ):
 
 	rule realign_reads:
 		input:
@@ -63,113 +54,38 @@ if(os.path.exists("reads.orig.bam")):
 			"reads.bam"
 		threads:
 			8
-		shell: 
-			'''
-			{sourceblasr}
-			if [ 'blasrno' == 'blasr' ]; then 
-				echo "Running Blasr"
-				which blasr
-				# the grep line removes references to previous alignment references 
-				samtools view -h {input.reads} | \
-					grep -v "^@SQ" | \
-					blasr /dev/stdin {input.ref} \
-					-clipping subread \
-					-passthrough \
-					-streaming \
-					-fileType sam \
-					-sam \
-					-out /dev/stdout \
-					-nproc {threads} -bestn 1 \
-					-mismatch 3 -insertion 9 -deletion 9 \
-					-minAlignLength {minaln} \
-					-minMatch 8 | \
-					 samtools view -bS -F 4 - | \
-					 samtools sort -m 4G -T tmp -o {output}
-					
-					
-					#pbsamstream - | \
-					# the above sets tlen in the sam to zero for some reason. 
-					#-m 4 
-			else
-				# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
-				which minimap2 	
-				samtools fastq {input.reads} | \
-						minimap2 \
-						-ax map-pb \
-						--cs \
-						-t {threads} \
-						-k 11 \
-						-A 3 \
-						-B 3 \
-						-O 9 \
-						-E 3 \
-						-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
-						ref.fasta /dev/stdin | \
-						samtools view -bS -F 2308 - | \
-						samtools sort -m 4G -T tmp -o {output}
-				# cs adds a tag the generates info about insertion and deletion events 
-				# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
-				# actually i think I will allow chimeric, (allows jumps of large gaps)
-				# -A matching score -B mismatching score -E gap extenshion penalty 
-			fi 
+		shell: """
+source {python3}
+echo "Running Blasr"
+blasr {input.reads} {input.ref} \
+	--clipping subread \
+	--sam \
+	--out - \
+	--nproc {threads} --bestn 1 \
+	--mismatch 3 --insertion 9 --deletion 9 \
+	--minAlignLength {minaln} \
+	--minMatch 8 | \
+	 samtools view -bS -F 4 - | \
+	 samtools sort -m 4G -T tmp -o {output}
+	
+samtools index {output}
+"""
 
-			samtools index {output}
-			'''
-
-elif(os.path.exists("reads.orig.fasta")):
-    rule realign_reads_fasta:
-        input:
-            basreads='reads.orig.fasta', 
-            ref='ref.fasta'
-        output:
-            "reads.bam"
-        shell: 
-            """
-			{sourceblasr}
-			blasr {input.basreads} {input.ref}  \
-					-sam -preserveReadTitle -clipping subread -out /dev/stdout \
-					-nproc {threads} -bestn 1 \
-                    -mismatch 3 -insertion 9 -deletion 9 \
-                    -minAlignLength {minaln} | \
-                     samtools view -bS -F 4 - | \
-                     samtools sort -m 4G -T tmp -o {output}
-            """
-
-elif(os.path.exists("reads.fofn")):
-    rule get_reads_that_map:
-        input:
-            basreads='reads.fofn', 
-            ref='ref.fasta'
-        output:
-            "reads.bam"
-        threads: 8
-        shell: 
-            """
-			{sourceblasr}
-			blasr {input.basreads} {input.ref}  \
-					-sam -preserveReadTitle -clipping none -out /dev/stdout \
-					-nproc {threads} -bestn 1 \
-                    -mismatch 3 -insertion 9 -deletion 9 \
-                    -minAlignLength {minaln} | \
-                     samtools view -bS -F 4 - | \
-                     samtools sort -m 4G -T tmp -o {output}
-            """
-
-elif(os.path.exists("reads.fastq")):
-	rule get_reads_that_map:
+elif(os.path.exists("reads.orig.bam") and not ISPB):
+	rule realign_reads_minimap:
 		input:
-			reads='reads.fastq', 
+			reads='reads.orig.bam', 
 			ref='ref.fasta'
 		output:
 			"reads.bam"
 		threads: 8
 		shell:
 			'''	
-			{sourceblasr}
+			source {python3}
 			# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
-			which minimap2 	
-			minimap2 \
-					-ax map-pb \
+			samtools fastq {input.reads} | \
+				minimap2 \
+					-ax map-ont \
 					--cs \
 					-t {threads} \
 					-k 11 \
@@ -178,7 +94,7 @@ elif(os.path.exists("reads.fastq")):
 					-O 9 \
 					-E 3 \
 					-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
-					ref.fasta {input.reads} | \
+					ref.fasta /dev/stdin | \
 					samtools view -bS -F 2308 - | \
 					samtools sort -m 4G -T tmp -o {output}
 			# cs adds a tag the generates info about insertion and deletion events 
@@ -188,9 +104,6 @@ elif(os.path.exists("reads.fastq")):
 
 			samtools index {output}
 			'''
-
-
-
 else:
 	print("NO INPUT READS!!!")
 	exit()
@@ -385,65 +298,21 @@ if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta
 		threads:8
 		shell:
 			"""
-			{sourceblasr}
-			if [ "blasr" == "blasr" ]; then 
-				blasr -sam  \
-						-nproc {threads} -out /dev/stdout \
-						-minAlignLength 500 -preserveReadTitle -clipping subread \
-						{input.reads} {input.ref} | \
-						samtools view -bSh -F 4 - | \
-						samtools sort -T tmp -o {output.bam}
-			fi
-				
-			samtools fastq {input.reads} | \
+			source {python3}
+				samtools fastq {input.reads} | \
 					minimap2 \
-					-ax map-pb \
-					--cs \
-					-k 11 \
-					-t {threads} \
-					ref.fasta /dev/stdin | \
-					samtools view -bS -F 2308 - | \
-					samtools sort -m 4G -T tmp -o {output}
+						-ax map-pb \
+						--eqx \
+						-k 11 \
+						-t {threads} \
+						ref.fasta /dev/stdin | \
+						samtools view -bS -F 2308 - | \
+						samtools sort -m 4G -T tmp -o {output}
+			
 			samtools index {output}
-
 			samtools depth -aa {output.bam} > {output.depth}
 			"""
 
-
-# the below suff is to be removed in the future
-'''
-	rule realignReads_to_Dups:
-		input:
-			depth="dup/dup_depth.tsv",
-			reads = "reads.fasta",
-			genome = ancient( "duplications.fasta" ),
-		output:
-			"dup/reads.dups.m4",
-		threads: 8 
-		shell:
-			'{sourceblasr}; blasr {input.reads} {input.genome} -m 4 -bestn 1 -preserveReadTitle -out {output} -nproc {threads}'
-
-	rule orderMatByalignments: #get more explanation
-		input:
-			"snvs/assembly.consensus.fragments.snv.mat",
-			"dup/reads.dups.m4"
-		output:
-			"snvs/assembly.consensus.fragments.snv.mat.categorized"
-		shell:
-			'{scriptsDir}/sorting/OrderMatByAlignments.py {input}  > {output}'
-
-else:
-	rule ifNoDuplicationsFasta:
-		input:
-			"snvs/assembly.consensus.fragments.snv.mat"
-		output:
-			"snvs/assembly.consensus.fragments.snv.mat.categorized"
-		shell:
-			"""
-			# this adds a fake catigory on the end
-			cat {input} | awk '{{ print $1"\t"$2"\tall"}}' > {output}
-			"""
-'''
 
 rule addFakeCatagoryToMatrix:
 	input:
@@ -571,7 +440,6 @@ rule makeCutsInPSVgraph:
 
 #
 # makes a gephi version of the plot, 
-# much nice imo 
 #
 rule gephi:
 	input:
