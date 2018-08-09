@@ -26,7 +26,7 @@ genome = "Mitchell_CHM1"
 genome = "Mitchell_CHM1_V2"
 genome = "Yoruban_feb_2018"
 genome = "CHM13"
-
+genome = "NA12878"
 
 asmdirs = strsplit( Sys.glob("~/Desktop/work/assemblies/*"), "/") 
 asmdirs = unlist( lapply(asmdirs, function(x){return(x[length(x)])}) ) 
@@ -243,6 +243,7 @@ dim(df)
 # reorder Status factors for ggplot
 #
 df$Status <- factor(df$Status, levels=c(res, pr, mAsm, failed))
+
 #
 # remove some NAs
 #
@@ -267,6 +268,7 @@ rangeRes = makeGRangesFromDataFrame(df[df$Status == res, ], seqnames.field=c("be
 rangeDiv = makeGRangesFromDataFrame(df[df$Status == pr, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
 rangeMasm = makeGRangesFromDataFrame(df[df$Status == mAsm, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
 
+
 MBs = c( paste(round(sum(width(reduce(rangeDiv)))/10^6,1), "Mbp"),
   paste(round(sum(width(reduce(rangeRes)))/10^6,1), "Mbp"),
   #NA,
@@ -277,6 +279,8 @@ MBs
 statusCounts= merge(statusCounts, MBs, by="row.names")
 statusCounts$id <- paste(statusCounts$counts, statusCounts$MBs, sep=" / ")
 statusCounts
+
+
 
 p0 <- ggplot(df, aes(Status, fill=Status)) + geom_bar() + 
   labs(y = "Cluster Count") +
@@ -339,9 +343,10 @@ mysave("numPSVs.pdf", p1.2)
 #
 # number of reads per type 
 #
+p2max = min(800, max(df$numReads))
 p2 <- ggplot(df, aes(Status, numReads, fill=Status)) +
   geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
-  coord_cartesian(ylim=c(0, 800)) +
+  coord_cartesian(ylim=c(0, p2max)) +
   scale_fill_manual(values=col4) + myTheme
 #p2
 mysave("reads.pdf", p2)
@@ -679,7 +684,7 @@ green <- "#00b2b2"
 myColors = c(green, black, red)
 names(myColors) <- levels(as.factor(gw$Status))
 
-plots = ( plotSegDups(gw,"newResolvedByPoint.pdf" ,"newResolvedByDensity.pdf", myColors) )
+#plots = ( plotSegDups(gw,"newResolvedByPoint.pdf" ,"newResolvedByDensity.pdf", myColors) )
 #plots[1]
 #plots[2]
 

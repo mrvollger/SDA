@@ -26,6 +26,9 @@ def makeHeader():
 	return(rtn)
 
 def perId(matches, missmatch, ins, dele, insEvent, delEvent):
+	if( (matches + missmatch) == 0):
+		return((0,0,0))
+
 	bymatches = (100.0 * matches)/(matches + missmatch)
 	byevents = (100.0 * matches)/(matches + missmatch + insEvent + delEvent)
 	byall = (100.0 * matches)/(matches + missmatch + ins + dele)

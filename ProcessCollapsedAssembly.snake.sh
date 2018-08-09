@@ -8,7 +8,7 @@ source $DIR/env_python3.cfg
 snakefile=$DIR/ProcessCollapsedAssembly.py
 jobNum=50
 waitTime=60 # this really needs to be 60 on our cluster :(
-retry=1 # numer of times to retry the pipeline if it failes
+retry=0 # numer of times to retry the pipeline if it failes
 # I allow a retry becuase sometimes even the really long waittime is not enough,
 # and the files are actaully there
 
