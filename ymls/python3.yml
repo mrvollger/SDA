@@ -8,10 +8,12 @@ channels:
 dependencies:
   - biopython=1.71=py36h637b7d7_0
   - certifi=2018.4.16=py36_0
-  - h5py=2.7.1=py36h3585f63_0
   - openssl=1.0.2o=h20670df_0
+  - bax2bam=0.0.9=hac9d22c_3
   - bcftools=1.7=0
   - bedtools=2.27.1=1
+  - blasr=5.3.2=hac9d22c_3
+  - blasr_libcpp=5.3.1=hac9d22c_2
   - bleach=1.4.2=py36_0
   - bwa=0.7.17=pl5.22.0_2
   - canu=1.5=pl5.22.0_1
@@ -21,9 +23,11 @@ dependencies:
   - gnuplot=5.0.4=ncurses5.9_1
   - htslib=1.7=0
   - mappy=2.11=py36ha92aebf_0
+  - mashmap=2.0=h9dd4a16_2
   - miniasm=0.2=0
   - minimap2=2.11=ha92aebf_0
   - mysql-connector-c=6.1.6=2
+  - pbbam=0.18.0=h1310cd9_1
   - perl-filesys-df=0.92=1
   - perl-threaded=5.22.0=pl5.22.0_12
   - pilon=1.22=py36_0
@@ -85,7 +89,8 @@ dependencies:
   - graphite2=1.3.11=0
   - gst-plugins-base=1.8.0=0
   - gstreamer=1.8.0=1
-  - hdf5=1.10.1=2
+  - h5py=2.8.0=py36hb794570_1
+  - hdf5=1.10.2=hc401514_1
   - html5lib=1.0.1=py_0
   - httplib2=0.11.1=py36_0
   - icu=58.2=0
@@ -133,6 +138,7 @@ dependencies:
   - notebook=5.4.1=py36_0
   - numexpr=2.6.5=py36_0
   - olefile=0.45.1=py36_0
+  - openblas=0.2.20=8
   - pandas=0.22.0=py36_0
   - pandoc=2.2=0
   - pandocfilters=1.4.2=py36_0
@@ -158,7 +164,7 @@ dependencies:
   - pynacl=1.1.2=py36_0
   - pyparsing=2.2.0=py36_0
   - pyqt=5.6.0=py36_5
-  - pytables=3.4.3=py36_8
+  - pytables=3.4.4=py36h4f72b40_1
   - python=3.6.5=1
   - python-dateutil=2.6.1=py36_0
   - python-irodsclient=0.7.0=py_0
@@ -210,6 +216,7 @@ dependencies:
   - gfortran_impl_linux-64=7.2.0=hdf63c60_3
   - gfortran_linux-64=7.2.0=26
   - glib=2.53.6=h5d9569c_2
+  - gsl=2.2.1=h0c605f7_3
   - gxx_impl_linux-64=7.2.0=hdf63c60_3
   - gxx_linux-64=7.2.0=26
   - harfbuzz=1.7.6=hc5b324e_0
@@ -376,6 +383,6 @@ dependencies:
   - r-zoo=1.8_0=mro343h086d26f_0
   - pip:
     - msgpack==0.5.6
-    - tables==3.4.3
+    - tables==3.4.4
 prefix: /net/eichler/vol2/home/mvollger/anaconda3/envs/abp-python-3
 

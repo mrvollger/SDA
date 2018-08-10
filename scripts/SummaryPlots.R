@@ -684,7 +684,7 @@ green <- "#00b2b2"
 myColors = c(green, black, red)
 names(myColors) <- levels(as.factor(gw$Status))
 
-#plots = ( plotSegDups(gw,"newResolvedByPoint.pdf" ,"newResolvedByDensity.pdf", myColors) )
+plots = ( plotSegDups(gw,"newResolvedByPoint.pdf" ,"newResolvedByDensity.pdf", myColors) )
 #plots[1]
 #plots[2]
 
