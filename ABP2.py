@@ -21,13 +21,16 @@ configfile:
 
 
 ISONT=False
+MM2_TYPE=" map-pb " 
 if("ont" in config):
 	if(config["ont"].lower() in ["t", "true"] ):
 		ISONT=True
-MM2_TYPE=" map-pb "
-if(ISONT):
-	MM2_TYPE=" map-ont "
-
+		MM2_TYPE= " map-ont "
+MM2 = False
+if("minimap" in config):
+	if(config["minimap"].lower() in ["t", "true"] ):
+		MM2=True
+bandwidth = "5000"
 
 # min cov is used to detemrine the filter for getting rid of low read assemblies. 
 MINREADS = int(config["MINCOV"]*1.0/2.0)
@@ -39,6 +42,9 @@ for group in groups:
     group= group.strip().split(".")
     assert group[0]=="group"
     IDS.append(group[1])
+
+
+assemblers = ["canu", "wtdbg", "miniasm"]
 
 
 rule all:
@@ -121,78 +127,118 @@ rule whatsHap:
 # if there are no reads partitioned this makes an empty file that subsequent steps check for
 rule readsFromSam:
     input: 
-        H2= 'group.{n}/H2.{prefix}.bam',
+        H2= 'group.{n}/H2.WH.bam',
     output:
-        pfasta= 'group.{n}/{prefix}.reads.fasta'
+        pfasta= 'group.{n}/WH.reads.fasta'
     shell:
         """
-		grep -v "^@" {input.H2} > group.{wildcards.n}/{wildcards.prefix}.temp.txt \
-			|| touch group.{wildcards.n}/{wildcards.prefix}.temp.txt
+		grep -v "^@" {input.H2} > group.{wildcards.n}/WH.temp.txt \
+			|| touch group.{wildcards.n}/WH.temp.txt
 
-		if [ -s group.{wildcards.n}/{wildcards.prefix}.temp.txt ]; then
+		if [ -s group.{wildcards.n}/WH.temp.txt ]; then
 			samtools fasta {input.H2} > {output.pfasta} 
         else
             >&2 echo " no real assembly"
             touch {output.pfasta};
         fi
 
-        rm -f group.{wildcards.n}/{wildcards.prefix}.temp.txt 
+        rm -f group.{wildcards.n}/WH.temp.txt 
         """
 
 # check the input sequence data for the purpose of canu 
 datatype = " -pacbio-raw "
+overlaper = " ava-pb "
 if(ISONT):
 	datatype = " -nanopore-raw "
+	overlaper = " ava-ont "
 
 # run the assembly
 rule runAssembly:
-    input: 'group.{n}/{prefix}.reads.fasta'
-    output: 'group.{n}/{prefix}.assembly/asm.contigs.fasta'
+    input: 'group.{n}/WH.reads.fasta'
+    output: 'group.{n}/{ASM}.assembly/asm.contigs.fasta'
     threads: 4
-    shell:
-        """
-		# make sure we actaully re run the assembly
-		rm -rf group.{wildcards.n}/{wildcards.prefix}.assembly/*
+	shell:'''
+# asm location
+PREFIX="group.{wildcards.n}/{wildcards.ASM}.assembly" 
+echo $PREFIX
+# make sure we actaully re run the assembly
+rm -rf $PREFIX/*
+# make asm dir
+mkdir -p $PREFIX 
+# set minimum assembly length 
+MINLENGTH="10000"
 
-        if [ -s {input} ]; then
-            canu {datatype} {input} \
-				genomeSize=60000 \
-				corOutCoverage=300 \
-				corMhapSensitivity=high \
-				corMinCoverage=1 \
-				gnuplotTested=true  \
-		        -p asm useGrid=false  \
-                -d group.{wildcards.n}/{wildcards.prefix}.assembly \
-		        maxThreads={threads} cnsThreads={threads} ovlThreads={threads} \
-		        mhapThreads={threads} \
-				contigFilter="{MINREADS} 5000 1.0 .75 {MINREADS}" \
-                || ( >&2 echo " no real assembly" && \
-                mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly && \
-                > {output} )
+if [ -s {input} ]; then
+	
+	########################## CANU ##########################################
+	if [ {wildcards.ASM} == 'canu' ]; then 
+		canu {datatype} {input} \
+			genomeSize=60000 \
+			corOutCoverage=300 \
+			corMhapSensitivity=high \
+			corMinCoverage=1 \
+			gnuplotTested=true  \
+			-p asm useGrid=false  \
+			-d $PREFIX \
+			maxThreads={threads} cnsThreads={threads} ovlThreads={threads} \
+			mhapThreads={threads} \
+			contigFilter="{MINREADS} $MINLENGTH 1.0 .75 {MINREADS}" \
+			|| ( >&2 echo " no real assembly" && \
+			> {output} )
+	
+	########################## WTDBG ##########################################
+	elif [ {wildcards.ASM} == 'wtdbg' ]; then 
+		wtdbg -i {input} \
+				-t {threads} \
+				--ctg-min-length $MINLENGTH \
+				-o $PREFIX/asm 
+		# run consensous
+		if [ -s $PREFIX/asm.ctg.lay ]; then
+			wtdbg-cns \
+					-t {threads} \
+					-i $PREFIX/asm.ctg.lay \
+					-o {output}
+		else
+			touch {output}
+		fi
+	
+	########################## MINIASM ##########################################
+	# TODO: fix the output to generate a fasta
+	elif [ {wildcards.ASM} == 'miniasm' ]; then 
+		# Overlap for PacBio reads (or use "-x ava-ont" for nanopore read overlapping)
+		minimap2 -x {overlaper} -t {threads} {input} {input} | \
+				gzip -1 > $PREFIX/reads.paf.gz
 		
-        else
-            >&2 echo " no real assembly"
-            mkdir -p group.{wildcards.n}/{wildcards.prefix}.assembly
-            > {output}
-        fi
-        """
+		# Layout
+		miniasm -f {input} $PREFIX/reads.paf.gz > $PREFIX/reads.gfa
 
+		if [ -s $PREFIX/reads.gfa ] ; then 
+			{base}/gfa2fasta.sh $PREFIX/reads.gfa {output}
+		else
+			touch {output}
+		fi
+
+	fi 
+
+else
+	>&2 echo " no real assembly"
+	> {output}
+fi
+'''
 
 # check if the assembly is not size 0
 rule assemblyReport:
     input:  
-        oasm= 'group.{n}/{prefix}.assembly/asm.contigs.fasta',
-        preads='group.{n}/{prefix}.reads.fasta',
+        oasm= 'group.{n}/{ASM}.assembly/asm.contigs.fasta',
     output: 
-        asm=  'group.{n}/{prefix}.assembly.fasta',
-        report='group.{n}/{prefix}.report.txt'
+        asm=  'group.{n}/{ASM}.assembly.fasta',
+        report='group.{n}/{ASM}.report.txt'
     shell:
         """
         if [ -s {input.oasm} ]
         then
             cp {input.oasm} {output.asm}
 	        echo "Number of reads " > {output.report}
-	        grep -c ">" {input.preads} >> {output.report}
 	        echo "Assembly number of contigs" >> {output.report}
         else
             touch {output.asm}
@@ -200,12 +246,12 @@ rule assemblyReport:
         fi
         """ 
 
-if( ISONT ):
+if( ISONT or MM2 ):
 	rule makeFakeCorrected:
 		input:
-			asm= 'group.{n}/{prefix}.assembly.fasta'
+			asm= 'group.{n}/{ASM}.assembly.fasta'
 		output:
-			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
+			quiver= 'group.{n}/{ASM}.assembly.consensus.fasta',
 		threads: 4
 		shell:
 			"""
@@ -214,11 +260,10 @@ if( ISONT ):
 else:
 	rule bamFromAssembly:
 		input:
-			asm= 'group.{n}/{prefix}.assembly.fasta',
-			H2= 'group.{n}/H2.{prefix}.bam',
-			preads='group.{n}/{prefix}.reads.fasta',
+			asm= 'group.{n}/{ASM}.assembly.fasta',
+			H2= 'group.{n}/H2.WH.bam',
 		output: 
-			asmbam= 'group.{n}/{prefix}.assembly.bam',
+			asmbam= 'group.{n}/{ASM}.assembly.bam',
 		threads: 4
 		shell:
 			"""
@@ -239,10 +284,10 @@ else:
 
 	rule quiverFromBam:
 		input:
-			asmbam= 'group.{n}/{prefix}.assembly.bam',
-			asm= 'group.{n}/{prefix}.assembly.fasta'
+			asmbam= 'group.{n}/{ASM}.assembly.bam',
+			asm= 'group.{n}/{ASM}.assembly.fasta'
 		output:
-			quiver= 'group.{n}/{prefix}.assembly.consensus.fasta',
+			quiver= 'group.{n}/{ASM}.assembly.consensus.fasta',
 		threads: 4
 		shell:
 			'''
@@ -252,14 +297,7 @@ else:
 				# create empty files, this will allow other rules to conitnue 
 				> {output.quiver}
 			else
-				samtools faidx {input.asm}
-				
-				unset PYTHONPATH
-				module purge
-				. /etc/profile.d/modules.sh
-				module load modules modules-init modules-gs/prod modules-eichler
-				module load pitchfork
-				
+				source {python2}	
 				quiver \
 					--noEvidenceConsensusCall nocall --minCoverage 10 -j {threads} \
 					-r {input.asm} -o {output.quiver} {input.asmbam} \
@@ -283,16 +321,17 @@ else:
 # combines the output assemblies 
 rule combineAsm:
 	input:
-		quiver= expand('group.{ID}/WH.assembly.consensus.fasta', ID=IDS),
+		quiver= expand('group.{ID}/{{ASM}}.assembly.consensus.fasta', ID=IDS),
 	output: 
-		asmWH='WH.assemblies.pre.pilon.fasta',
+		asm='{ASM}.assemblies.pre.pilon.fasta',
 	run:
 		collapse = os.path.basename(os.getcwd())
 		rtn = ""
 		counter = 1
 		toAdd = []
-		for asm in sorted( glob.glob("group.*/WH.assembly.consensus.fasta")): 
-			match = re.match( "(group.\d+)/WH.assembly.consensus.fasta", asm)
+		asmfile="{}.assembly.consensus.fasta".format(wildcards["ASM"])
+		for asm in sorted( glob.glob("group.*/" + asmfile )): 
+			match = re.match("(group.\d+)/" + asmfile, asm)
 			group = match.group(1)
 			print(group)
 			recs = list(SeqIO.parse(asm, "fasta"))
@@ -304,18 +343,18 @@ rule combineAsm:
 				print(rec.id)
 				toAdd.append(rec)
 		#print(rtn)
-		SeqIO.write(toAdd ,output["asmWH"], "fasta" ) 
+		SeqIO.write(toAdd ,output["asm"], "fasta" ) 
 		
 		# remove extra files from assemblies, this speeds up the dag building for snakemake by a lot
 		shell("""rm -rf \
-				group.*/WH.assembly/canu-logs \
-				group.*/WH.assembly/canu-scripts \
-				group.*/WH.assembly/correction \
-				group.*/WH.assembly/correction.html.files \
-				group.*/WH.assembly/trimming \
-				group.*/WH.assembly/trimming.html.files \
-				group.*/WH.assembly/unitigging \
-				group.*/WH.assembly/unitigging.html.files """)
+				group.*/canu.assembly/canu-logs \
+				group.*/canu.assembly/canu-scripts \
+				group.*/canu.assembly/correction \
+				group.*/canu.assembly/correction.html.files \
+				group.*/canu.assembly/trimming \
+				group.*/canu.assembly/trimming.html.files \
+				group.*/canu.assembly/unitigging \
+				group.*/canu.assembly/unitigging.html.files """)
 
 
 
@@ -336,45 +375,46 @@ if(os.path.exists("illumina.orig.bam")):
 
 	rule indexForBWA:
 		input:
-			asm='WH.assemblies.pre.pilon.fasta',
+			asm='{ASM}.assemblies.pre.pilon.fasta',
 		output:
-			amb = "bwa/bwa.amb",
-			ann = "bwa/bwa.ann",
-			bwt = "bwa/bwa.bwt",
-			pac = "bwa/bwa.pac",
-			sa = "bwa/bwa.sa",
+			amb = "bwa/{ASM}.bwa.amb",
+			ann = "bwa/{ASM}.bwa.ann",
+			bwt = "bwa/{ASM}.bwa.bwt",
+			pac = "bwa/{ASM}.bwa.pac",
+			sa = "bwa/{ASM}.bwa.sa",
 		shell:
 			"""
 			mkdir -p bwa
-			bwa index -p bwa/bwa -a bwtsw {input.asm}
+			bwa index -p bwa/{wildcards.ASM}.bwa -a bwtsw {input.asm}
 			"""
 
 	rule reMapIllumina:
 		input:
 			fastq = "illumina.fastq",
-			asmWH='WH.assemblies.pre.pilon.fasta',
-			amb = "bwa/bwa.amb",
-			ann = "bwa/bwa.ann",
-			bwt = "bwa/bwa.bwt",
-			pac = "bwa/bwa.pac",
-			sa = "bwa/bwa.sa", 
+			asmWH='{ASM}.assemblies.pre.pilon.fasta',
+			amb = "bwa/{ASM}.bwa.amb",
+			ann = "bwa/{ASM}.bwa.ann",
+			bwt = "bwa/{ASM}.bwa.bwt",
+			pac = "bwa/{ASM}.bwa.pac",
+			sa = "bwa/{ASM}.bwa.sa",
+
 		output:
-			bam = "illumina.bam",
+			bam = "{ASM}.illumina.bam",
 		threads: 8
 		shell:
 			"""
-			bwa mem -M -t {threads} -p bwa/bwa {input.fastq} | \
+			bwa mem -M -t {threads} -p bwa/{wildcards.ASM}.bwa {input.fastq} | \
 					samtools view -bS - | \
 					samtools sort - -o {output.bam}
 			"""
 			
 	rule runPilon:
 		input:
-			asmWH='WH.assemblies.pre.pilon.fasta',
-			bam = "illumina.bam",
+			asmWH='{ASM}.assemblies.pre.pilon.fasta',
+			bam = "{ASM}.illumina.bam",
 		output:
-			asmWH = "WH.assemblies.fasta",
-			bai = "illumina.bam.bai",
+			asmWH = "{ASM}.assemblies.fasta",
+			bai = "{ASM}.illumina.bam.bai",
 		threads: 8
 		shell:
 			"""
@@ -395,12 +435,12 @@ if(os.path.exists("illumina.orig.bam")):
 else:
 	rule copyToEnd:
 		input:
-			asmWH='WH.assemblies.pre.pilon.fasta',
+			asm='{ASM}.assemblies.pre.pilon.fasta',
 		output:
-			asmWH = "WH.assemblies.fasta",
+			asm = "{ASM}.assemblies.fasta",
 		shell:
 			"""
-			cp {input.asmWH} {output.asmWH}
+			cp {input.asm} {output.asm}
 			"""
 
 
@@ -426,7 +466,8 @@ if(os.path.exists("duplications.fasta")):
 			#b {input.dup} {input.ref} --sam --bestn 1 --clipping subread > {output.refsam} 
 			minimap2 \
 				{input.ref} {input.dup} \
-				-k 11 -a --eqx\
+				-k 11 -a --eqx \
+				-r {bandwidth} \
 				-x asm10 | \
 				samtools view -h -F 2308 - | \
 				samtools sort -m 4G -T tmp -o {output.refsam}
@@ -479,22 +520,23 @@ if(os.path.exists("duplications.fasta")):
 
 	rule mapToRefAndDupsBlasr:
 		input:	
-			asmWH="WH.assemblies.fasta",
+			asm="{ASM}.assemblies.fasta",
 			ref="ref.fasta",
 			dup="duplications.fasta",
 		output:
-			refsam="asms/WH.sam",
-			dupsam="asms/WH_dup.sam",
+			refsam="asms/{ASM}.sam",
+			dupsam="asms/{ASM}.dup.sam",
 		threads: 8
 		shell:"""
 #b --nproc {threads} --sam --out - \
 #	--bestn 1 --minMatch 11 --maxMatch 15 --nCandidates 50 \
-#	{input.asmWH} {input.ref} | \
+#	{input.asm} {input.ref} | \
 #	samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.refsam}
 
 minimap2 \
-	{input.ref} {input.asmWH} \
+	{input.ref} {input.asm} \
 	-k 11 -a --eqx -t {threads} \
+	-r {bandwidth} \
 	-x asm10 | \
 	samtools view -h -F 2308 - | \
 	samtools sort -m 4G -T tmp -o {output.refsam}
@@ -502,12 +544,13 @@ minimap2 \
 
 #b --nproc {threads} --sam --out - \
 #	--bestn 1 --minMatch 11 --maxMatch 15 --nCandidates 50 \
-#	{input.asmWH} {input.dup} | \
+#	{input.asm} {input.dup} | \
 #	samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
 
 minimap2 \
-	{input.dup} {input.asmWH} \
+	{input.dup} {input.asm} \
 	-k 11 -a --eqx -t {threads} \
+	-r {bandwidth} \
 	-x asm10 | \
 	samtools view -h -F 2308 - | \
 	samtools sort -m 4G -T tmp -o {output.dupsam}
@@ -516,11 +559,11 @@ minimap2 \
 
 	rule getTablesFromSam:
 		input:
-			refsam="asms/WH.sam",
-			dupsam="asms/WH_dup.sam",
+			refsam="asms/{ASM}.sam",
+			dupsam="asms/{ASM}.dup.sam",
 		output:
-			dup="asms/WH_dup.tsv",
-			ref="asms/WH.tsv",
+			dup="asms/{ASM}.dup.tbl",
+			ref="asms/{ASM}.tbl",
 		shell:
 			"""
 			{base}/samIdentity.py --header {input.refsam} > {output.ref}
@@ -549,6 +592,7 @@ samtools fasta {input.reads} |
 	minimap2 \
 		{input.ref} /dev/stdin \
 		-k 11 -a --eqx -t {threads} \
+		-r {bandwidth} \
 		-x {MM2_TYPE} | \
 			samtools view -bS -F 2308 - | \
 			samtools sort -m 4G -T tmp -o {output.bam}
@@ -561,9 +605,9 @@ samtools depth -aa {output.bam} > {output.depth}
 	rule plot_seqs_on_dup:
 		input:
 			depth="asms/dup_depth.tsv",
-			sam="asms/WH_dup.sam"
+			sam="asms/{ASM}.dup.sam"
 		output:
-			plot = "SeqsOnDup.png",
+			plot = "{ASM}.SeqsOnDup.png",
 		shell:
 			"""
 			{base}/plotDepth.py {input.depth} {output} --sam {input.sam}
@@ -577,17 +621,18 @@ samtools depth -aa {output.bam} > {output.depth}
 	rule summary:
 		input:
 			bed="ref.fasta.bed",
-			plot = "SeqsOnDup.png",
-			combine='WH.assemblies.fasta',
+			plot = "{ASM}.SeqsOnDup.png",
+			combine='{ASM}.assemblies.fasta',
 			truth="truth/README.txt",
-			tsv="asms/WH_dup.tsv",
+			tbldup=rules.getTablesFromSam.output.dup,
+			tblref=rules.getTablesFromSam.output.ref,
 			truthmatrix="truth/truth.matrix",
 		output:
-			summary="summary.txt",
-			table="abp.table.tsv",
+			summary="{ASM}.summary.txt",
+			table="{ASM}.abp.table.tsv",
 		shell:
 			"""
-			{base}/summary.py
+			{base}/summary.py --assembler {wildcards.ASM} --summary {output.summary}
 			{base}/overlapOfReadsCheck.py "group.*/H2.WH.bam" > read_collision.txt
 			"""
 
@@ -598,16 +643,18 @@ samtools depth -aa {output.bam} > {output.depth}
 	rule bedForTrack:
 		input:
 			bedx="ref.fasta.bed",
-			table="abp.table.tsv",
-			summary="summary.txt",
+			table="{ASM}.abp.table.tsv",
+			summary="{ASM}.summary.txt",
 			truthmatrix="truth/truth.matrix",
 		output:
-			asmbed="asm.bed",
+			asmbed="{ASM}.asm.bed",
 		params:
 			project=config["project"],
 		shell:
 			"""
-			{base}/bedForABP.py {input.table} {params.project}
+			{base}/bedForABP.py --stats {input.table} \
+					--summary {input.summary} --track {params.project} \
+					--out {output.asmbed}
 			"""
 
 else:
@@ -616,7 +663,7 @@ else:
 			ref='ref.fasta',
 		output:
 			truth="truth/README.txt",
-			asmbed="asm.bed",
+			asmbed=expand("{ASM}.asm.bed", ASM=assemblers),
 		shell:
 			"""
 			mkdir -p truth
@@ -635,26 +682,27 @@ else:
 #
 rule coverageOnAsms:
 	input:
-		asm = "WH.assemblies.fasta",
-		ref = "ref.fasta",
+		asm = "{ASM}.assemblies.fasta",
 		reads = "reads.sample.bam",
+		ref = "ref.fasta",
 	output:
-		cov="asms/asm_depth.tsv",
-		bam="asms/reads_on_asm.bam",
-		refWH="asms/refAndWH.fasta",
+		refplus="asms/{ASM}.plus.Ref.fasta",
+		cov="asms/{ASM}.depth.tsv",
+		bam="asms/{ASM}.reads_on_asm.bam",
 	threads:8
 	shell:"""
-cat {input.ref} {input.asm} > {output.refWH}
+cat {input.ref} {input.asm} > {output.refplus}
 
-#b {input.reads} {output.refWH} --clipping subread \
+#b {input.reads} {output.refplus} --clipping subread \
 #	--nproc {threads} --bestn 1 --sam --out - | \
 #	samtools view -bS - | \
 #	samtools sort -m 4G -o {output.bam} - 
 
 samtools fasta {input.reads} |
 	minimap2 \
-		{output.refWH} /dev/stdin \
+		{output.refplus} /dev/stdin \
 		-k 11 -a --eqx -t {threads} \
+		-r {bandwidth} \
 		-x {MM2_TYPE} | \
 			samtools view -bS -F 2308 - | \
 			samtools sort -m 4G -T tmp -o {output.bam}
@@ -666,9 +714,9 @@ samtools depth -aa {output.bam} > {output.cov}
 
 rule plotCovOnAsm:
 	input:
-		cov="asms/asm_depth.tsv",
+		cov="asms/{ASM}.depth.tsv",
 	output:
-		plot="CoverageOnAsm.png",
+		plot="{ASM}.CoverageOnAsm.png",
 	shell:
 		"""
 		{base}/plotDepth.py {input.cov} {output.plot}
@@ -698,15 +746,15 @@ if(os.path.exists("real.fasta")):
 			"""
 	rule map_asms_to_real:
 		input:
-			asmWH="WH.assemblies.fasta",
+			asm="{ASM}.assemblies.fasta",
 			ref="real.fasta"
 		output:
-			WHm5="real/real.m5",
-			sam="real/real.sam",
+			m5="real/{ASM}.real.m5",
+			sam="real/{ASM}.real.sam",
 		shell:
 			"""
-			blasr -m 5 --bestn 1 --out {output.WHm5} {input.asmWH} {input.ref}
-			blasr -m 5 --bestn 1 --sam --clipping subread --out {output.sam} {input.asmWH} {input.ref}
+			blasr -m 5 --bestn 1 --out {output.m5} {input.asm} {input.ref}
+			blasr -m 5 --bestn 1 --sam --clipping subread --out {output.sam} {input.asm} {input.ref}
 			"""
 
 
@@ -726,9 +774,9 @@ if(os.path.exists("real.fasta")):
 else:
 	rule FakeCovOnReal:
 		input:
-			asmWH="WH.assemblies.fasta",
+			asm="{ASM}.assemblies.fasta",
 		output:
-			done="real/done.txt",
+			done="real/{ASM}.done.txt",
 		shell:
 			"""
 			touch {output.done}
@@ -738,14 +786,14 @@ else:
 
 
 
-
 rule final:
 	input:
-		combine='WH.assemblies.fasta',
-		plot="CoverageOnAsm.png",
+		combine=expand('{ASM}.assemblies.fasta', ASM=assemblers ),
+		plot=expand("{ASM}.CoverageOnAsm.png", ASM=assemblers),
+		asmbed=expand("{ASM}.asm.bed", ASM=assemblers),
+		done=expand("real/{ASM}.done.txt", ASM=assemblers),
+		asms=expand("group.{ID}/{ASM}.assembly/asm.contigs.fasta", ID=IDS, ASM=assemblers),
 		truth="truth/README.txt",
-		asmbed="asm.bed",
-		done="real/done.txt",
 	output: 'final'
 	shell:
 		"""

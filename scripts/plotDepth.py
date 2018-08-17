@@ -41,7 +41,7 @@ if(numGroups == 0):
 print(grouped)
 
 plt.rc('font', family='serif')
-fig, axsList = plt.subplots(numGroups, figsize=(16,9))
+fig, axsList = plt.subplots(numGroups, figsize=(16,3*numGroups))
 # convert to array
 if(type(axsList) != type(np.array([0]))):
     axsList = np.array([axsList])

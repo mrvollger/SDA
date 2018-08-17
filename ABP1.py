@@ -41,10 +41,21 @@ rule all:
 minaln="500"
 ISPB=True
 if("ont" in config):
-	if(config["ont"] == "True"):
+	if(config["ont"].lower() in ["t", "true"] ):
 		ISPB=False
+ISONT=False
+if("ont" in config):
+	if(config["ont"].lower() in ["t", "true"] ):
+		ISONT=True
+MM2 = False
+if("minimap" in config):
+	if(config["minimap"].lower() in ["t", "true"] ):
+		MM2=True
 
-if(os.path.exists("reads.orig.bam") and ISPB ):
+bandwidth = "5000"
+
+
+if(os.path.exists("reads.orig.bam") and ISPB and not MM2):
 
 	rule realign_reads:
 		input:
@@ -55,7 +66,7 @@ if(os.path.exists("reads.orig.bam") and ISPB ):
 		threads:
 			8
 		shell: """
-source {python3}
+source {python2}
 echo "Running Blasr"
 blasr {input.reads} {input.ref} \
 	--clipping subread \
@@ -67,11 +78,22 @@ blasr {input.reads} {input.ref} \
 	--minMatch 8 | \
 	 samtools view -bS -F 4 - | \
 	 samtools sort -m 4G -T tmp -o {output}
-	
+
 samtools index {output}
+
+samtools view {output} > tmp.sam
+
+# remove output if it makes an empty bam
+if [ -s tmp.sam ] ; then
+	rm tmp.sam
+else
+	rm tmp.sam
+	rm {output}*
+fi
+
 """
 
-elif(os.path.exists("reads.orig.bam") and not ISPB):
+elif(os.path.exists("reads.orig.bam") and (not ISPB or MM2)):
 	rule realign_reads_minimap:
 		input:
 			reads='reads.orig.bam', 
@@ -93,6 +115,7 @@ elif(os.path.exists("reads.orig.bam") and not ISPB):
 					-B 3 \
 					-O 9 \
 					-E 3 \
+					-r {bandwidth} \
 					-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
 					ref.fasta /dev/stdin | \
 					samtools view -bS -F 2308 - | \

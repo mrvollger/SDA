@@ -6,12 +6,18 @@ from LocalAssembly3 import LocalAssembly
 import pandas as pd
 import os
 import glob
+import argparse 
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--assembler", help="the name of the assembler used, canu, wtdbg, miniasm")
+parser.add_argument("--summary", help="output location for the summary")
+args = parser.parse_args()
 
 
 # generate a summary of the assmebly 
 
 cwd = os.getcwd()
-LA = LocalAssembly(cwd)
+LA = LocalAssembly(cwd, args.assembler)
 df = LA.all
 #data = glob.glob("abp.table.tsv")[0]
 #df = pd.read_csv(data, sep = "\t")
@@ -69,13 +75,8 @@ Group Stats:
 '''.format(region, copies, numAsm, numCC, refRegions, df.to_string(index=False))
 
 #print(text)
-outfile = open("summary.txt", "w+")
+outfile = open(args.summary, "w+")
 outfile.write(text)
 outfile.close()
-
-
-#abp.DrawGraph(g, out,  labels=labels, pos=pos, addText = text)
-
-
 
 
