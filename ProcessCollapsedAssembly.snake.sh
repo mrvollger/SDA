@@ -6,7 +6,7 @@ source $DIR/env_python3.cfg
 # snakemake paramenters
 #
 snakefile=$DIR/ProcessCollapsedAssembly.py
-jobNum=50
+jobNum=300
 waitTime=60 # this really needs to be 60 on our cluster :(
 retry=0 # numer of times to retry the pipeline if it failes
 # I allow a retry becuase sometimes even the really long waittime is not enough,

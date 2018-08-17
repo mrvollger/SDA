@@ -23,10 +23,11 @@ library(GenomicRanges)
 suppressPackageStartupMessages(library("argparse"))
 
 genome = "Mitchell_CHM1"
-genome = "Mitchell_CHM1_V2"
-genome = "Yoruban_feb_2018"
 genome = "CHM13"
+genome = "Yoruban_feb_2018"
+genome = "Mitchell_CHM1_V2"
 genome = "NA12878"
+
 
 asmdirs = strsplit( Sys.glob("~/Desktop/work/assemblies/*"), "/") 
 asmdirs = unlist( lapply(asmdirs, function(x){return(x[length(x)])}) ) 
@@ -343,12 +344,12 @@ mysave("numPSVs.pdf", p1.2)
 #
 # number of reads per type 
 #
-p2max = min(800, max(df$numReads))
+p2max = min(50, max(df$numReads))
 p2 <- ggplot(df, aes(Status, numReads, fill=Status)) +
-  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) + 
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75), scale="width") + 
   coord_cartesian(ylim=c(0, p2max)) +
   scale_fill_manual(values=col4) + myTheme
-#p2
+p2
 mysave("reads.pdf", p2)
 
 
@@ -392,17 +393,25 @@ mysave("aveRefLength.pdf", p4)
 #
 # density of resovled vs partially resolved 
 #
+library(ggrepel)
+lendf = ddply(dfs, "Status", summarise, Mean=mean(Length)/1000 , Median= median(Length)/1000 )
+lendf$label = paste0("Mean: ", round(lendf$Mean,2), " kbp")
+lendf
 p8 = ggplot(dfs, aes(x=Status, y=Length/1000, fill=Status) ) + 
-  geom_jitter(aes(color=Status), height = 0, width = 0, size=2) +
-  geom_violin( draw_quantiles = c(0.25, 0.5, 0.75) ) +
+  #geom_jitter(aes(color=Status), height = 0, width = 0, size=2) +
+  geom_violin( draw_quantiles = c(0.25, 0.5, 0.75) , scale = "width" ) +
   #geom_density(alpha=0.8, aes(x=Length/1000, fill=Status))  +
   #geom_point(aes(Status, Length/1000, fill=Status), color="cyan") + 
   scale_fill_manual(values=col4) +
   scale_color_manual(values=col4) +
   scale_y_continuous(labels = comma, breaks = round(seq(min(df$Length), max(df$Length), by = 25),1)) +
   #theme(axis.text.y = element_blank()) +
-  ylab("Assembly length (kbp)") + xlab("Status")+ myTheme 
-#p8
+  ylab("Assembly length (kbp)") + xlab("Status")+ myTheme +
+  geom_text_repel(data=lendf, aes(x=Status, y=Mean, label=label),
+                  arrow = arrow(length = unit(0.01, "npc")),
+                  nudge_x=0.25, nudge_y=(max(dfs$Length)/5000) , size =5, 
+                  segment.size = .5, segment.color = "darkred")# nudge_x = .55)
+p8
 mysave("assemblyLength.pdf",p8)
 #summary(dfr$Length)
 
@@ -685,8 +694,8 @@ myColors = c(green, black, red)
 names(myColors) <- levels(as.factor(gw$Status))
 
 plots = ( plotSegDups(gw,"newResolvedByPoint.pdf" ,"newResolvedByDensity.pdf", myColors) )
-#plots[1]
-#plots[2]
+plots[1]
+plots[2]
 
 gw2 = gw[gw$Status != "ABP",]
 plots2 = ( plotSegDups(gw2,"ResolvedByPoint.pdf" ,"ResolvedByDensity.pdf", myColors) )
@@ -729,5 +738,45 @@ for(t in 1:length(myplots)){
   print(myplots[[t]])
 }
 dev.off()
+
+
+
+
+
+
+
+
+
+
+
+##########################################################################################3
+### find out where failed regions map to ########################3
+################################################################################################3
+
+# failed = df[df$Status=="Failed", "refRegions"]
+# failed = unlist( tstrsplit(failed, ";|,") )
+# failed = gsub("\n", "", failed)
+# failed = gsub("\"", "", failed)
+# failed = gsub(" ", "", failed)
+# failed = gsub('c\\(', "", failed)
+# failed = gsub("\\)", "", failed)
+# failed = data.table(failed=unlist( failed) )
+# failed = cSplit(failed, "failed", ":")
+# failed = cSplit(failed, "failed_2", "-")
+# colnames(failed) <- c("chr","start","end")
+# failed$start=as.numeric(failed$start)
+# failed$end=as.numeric(failed$end)
+# failed
+# fail = makeGRangesFromDataFrame(failed)
+# sds = makeGRangesFromDataFrame(segdups)
+# fail
+# sds
+# 
+# x = df$copiesInRef[df$Status=="Failed"]
+
+ggplot(df[df$Status=="Failed",]) +
+  geom_histogram(aes(x=copiesInRef), breaks=seq(0,30)) + myTheme +
+  xlab("Copies in the Reference") +
+  ylab("Counts of failed assemblies")
 
 

@@ -357,8 +357,8 @@ rule MapReads:
 					--advanceExactMatches 15  \
 					--clipping subread \
 					--nproc {threads} \
-					--sam --out - | \
-				samtools view -bS -F 4 - | \
+					--bam --out - | \
+				samtools view -b -F 4 - | \
 				samtools sort -T {TMPDIR}/blasr -@ 8 -m 8G - -o {output.align}
 			""")
 		else: # the reads are ont or not foramted like pb
@@ -383,10 +383,10 @@ rule BamIndex:
     output:
         bai="alignments/align.{index}.bam.bai"
     params:
-        cluster=" -pe serial 1 -l mfree=2G -l h_rt=24:00:00",
+        cluster=" -pe serial 2 -l mfree=4G -l h_rt=24:00:00",
     shell:
         """
-        samtools index {input.bam}
+        samtools index -@ {threads} {input.bam}
         """
 
 #
@@ -621,7 +621,6 @@ rule GenerateMinAndMax:
 rule CountOverlappingRepeatElements:
 	input:
 		combined="coverage/all.merged.bed",
-		#combined="coverage/all.5000.merged.bed",
 		allR = "reference/all.repeats.bed",
 	output:
 		repeatCounted="coverage/all.repeatCounted.bed",
@@ -638,7 +637,7 @@ rule CountOverlappingRepeatElements:
 
 def NoRepeatContent(row):
 	val = "-"
-	if(row["repeatCount"] == 0):
+	if(row["repeatCount"] <= 75):
 		val = "+"
 	return(val)
 
@@ -652,13 +651,16 @@ rule BedForCollapses:
 		#json=rules.GenerateMinAndMax.output.json,
 		fai=reference + ".fai",
 	output:
-		temp = "coverage/unmerged.100.collapses.bed",
+		temp = "coverage/unmerged.tmp.collapses.bed",
 		collapses="coverage/unmerged.collapses.bed",
 	params:
 		cluster=" -pe serial 1 -l mfree=16G -l h_rt=24:00:00",
 	run:
 		bed = pd.read_csv(input["combined"], sep = "\t", header=None, 
 				names=['contig', 'start', 'end', 'coverage', "repeatCount"])
+
+		# change repete content to a percentage
+		bed["repeatCount"] = 100 * bed["repeatCount"] / ( bed["end"] - bed["start"] )
 
 		# require high enough coverage
 		stats = pd.read_csv(input["stats"], header = 0, sep = "\t")
@@ -734,13 +736,14 @@ rule MergeBedForCollapses:
 		cluster=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
 	run:	
 		# read in the merged set
-		HCR = pd.read_csv(input["collapses"], sep = "\t", header=None, 
+		HCR = pd.read_csv(input["collapses"], sep = "\t", header=None,
 				names=['contig', 'start', 'end', "notRepeat", 'coverage', "repeatPer"])
 		# calcualte collapse length, +1 is because they are inclusive ranges on both sides
 		print(HCR.head())
 		HCR["clength"] = HCR["end"] - HCR["start"] + 1
 		# see the function description
 		HCR = removeIsolatedRepeatContent(HCR)		
+		
 		# I think i should combine collapses that are within a certain distance of one another, maybe
 		# this function does that, taking inot account the repeate content 
 		print(len(HCR))		
@@ -773,17 +776,16 @@ rule FilterCollapses:
 				names=['contig', 'start', 'end', "notR", 'coverage', "RC", "length", "contigl", "distToEnd"])
 		minsize = 9000
 		maxRC = 75
+		
+		# apply filter
+		collapses = collapses.ix[(collapses["length"] >= minsize) & (collapses["RC"]<=maxRC)]
+		outf = output["collapses"] 
+		collapses.to_csv(outf, header=False, index=False, sep="\t" )
+
 		# plot what filter will be 
 		cmd = "{}scripts/PlotFilterBySizeAndRepeatContent.R --bed {} --png {} --size {} --repeatContent {}".format(
 				snake_dir, input["unf"], output["png"], minsize, maxRC)
 		shell(cmd)
-		# apply filter
-		collapses = collapses.ix[(collapses["length"] >= minsize) & (collapses["RC"]<=maxRC)]
-		
-		outf = output["collapses"] 
-		#outf = "temp.bed"
-		collapses.to_csv(outf, header=False, index=False, sep="\t" )
-
 
 
 # creates a regions file that has all the regions that are collapsed
@@ -799,9 +801,9 @@ rule LocalAssembliesRegions:
 		cluster=" -pe serial 1 -l mfree=8G -l h_rt=24:00:00",
 	run:
 		df = pd.read_csv(input["collapses"], sep="\t", header=None)
-		df["start"] = df[1]#/100
+		df["start"] = df[1]
 		df["start"] = df.start.map(int)
-		df["end"] = df[2]#/100
+		df["end"] = df[2]
 		df["end"] = df.end.map(int)
 		df["ID"] = df[0] + "." + df.start.map(str) + "." + df.end.map(str) + "/"
 		df[["ID"]].to_csv(output["regions"], header=False, index=False, sep="\t")
@@ -936,7 +938,7 @@ GRCh38 = config["reference"]
 fai = GRCh38 + ".fai"  
 sa = GRCh38 + ".sa"  
 #
-# combine all of the ref.fastas so I can blasr them with one command, (much faster)
+# combine all of the ref.fastas so I can align them with one command, (much faster)
 #
 rule combineRefFasta:
 	input:
@@ -965,13 +967,12 @@ rule duplicationsFasta:
 		dupreffai="LocalAssemblies/all.ref.fasta.fai",
 		dupsam="LocalAssemblies/all.ref.fasta.sam",
 	params:
-		blasr=config["blasr"],
 		cluster=" -pe serial 8 -l mfree=8G -l h_rt=12:00:00",
 	threads: 8
 	shell:
 		"""
 		samtools faidx {input.dupref}
-		if [ "blasr" == "blasr" ]; then 
+		if [ "noblasr" == "blasr" ]; then 
 			blasr --nproc {threads} \
 					--sa {sa} \
 					--sam \
@@ -1006,11 +1007,11 @@ rule getHighIdentity:
 		duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
 	params:
 		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
-		samutils=config["mcutils"],
 	shell:
 		"""
 		#source {python2}
 		#{params.samutils}/samToBed {input.dupsam} --reportIdentity > {output.duptsv}
+		
 		{snake_dir}/scripts/samIdentity.py --header {input.dupsam} > {output.duptsv}
 		"""
 

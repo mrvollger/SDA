@@ -6,8 +6,10 @@ import os
 import string 
 
 parser = argparse.ArgumentParser(description="")
-parser.add_argument("stats",nargs='?', help="file with stats", default="abp.table.tsv" )
-parser.add_argument("track",nargs='?', help="name of the track hub, CHM1, CHM13, etc", default="Mitchell_CHM1" )
+parser.add_argument("--stats",  help="file with stats", default="abp.table.tsv" )
+parser.add_argument("--summary", help="summary file")
+parser.add_argument("--track", help="name of the track hub, CHM1, CHM13, etc", default="Mitchell_CHM1" )
+parser.add_argument("--out", help="output file to write to" )
 args=parser.parse_args()
 track = args.track
 
@@ -65,14 +67,14 @@ def getGenomeBrowserLinks(mys):
 # write html
 #
 html = "<h2>{1} collpase from {0}</h2>".format(track, collapse) 
-summary = open("summary.txt").read()
+summary = open(args.summary).read()
 html += "<pre>" + summary + "</pre>"
 html += "<a href=https://eichlerlab.gs.washington.edu/help/mvollger/{}/psvGraphs/{}.pdf>PSVgraph</a><br>".format(track, collapse)
 html += "<a href=https://eichlerlab.gs.washington.edu/help/mvollger/{}/psvGraphs/{}.png>CoverageGraph</a><br>".format(track, collapse)
 html = str.replace(html, "\n", "<br>")
 html = str.replace(html, "\t", " ")
 html = getGenomeBrowserLinks(html)
-open(collapse + ".html", "w+").write(html)
+#open(collapse + ".html", "w+").write(html)
 
 
 
@@ -144,27 +146,12 @@ for index, row in df.iterrows():
 
 
 
-f=open("asm.bed", "w+")
+f=open(args.out, "w+")
 f.write(rtn)
 f.close()
 
-# write new bed file
-os.system("cp asm.bed " + collapse + ".bedDetail")
+# this jsut copies the coverge plot so that I have a nice place to look at it in the html file
 os.system("cp Coverage.png " + collapse + ".png")
-
-# write track hub
-trackDB="""track {1}
-type bigBed 9
-shortLabel {1}
-longLabel {1}
-visibility full
-bigDataUrl {0}/{1}.bb
-html {0}/{1}.html
-itemRgb on
-parent {0}
-
-""".format(track, collapse)
-open(collapse + ".db", "w+").write(trackDB)
 
 
 

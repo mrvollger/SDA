@@ -183,7 +183,7 @@ outsams = {}
 invPar = {}
 for group in partition:
 	print(group, partition[group])
-	name = "group." + str(group) + "/H2.MEC.sam"
+	name = "group." + str(group) + "/H2.MEC.bam"
 	gsam = pysam.AlignmentFile( name , "w", template=inbam)
 	outsams[group] = gsam
 	# create opposite mapping of partition
@@ -200,11 +200,11 @@ for read in inbam.fetch(until_eof=True):
 if(args.compare):
 	import pysam
 	import re
-	samfiles = sorted(glob.glob("group.*/H2.WH.sam"))
+	samfiles = sorted(glob.glob("group.*/H2.WH.bam"))
 	sam = {}
 	tnames = []
 	for x in samfiles:
-		ID = re.match("group.(\d+)/H2.WH.sam",x).group(1)
+		ID = re.match("group.(\d+)/H2.WH.bam",x).group(1)
 		ID = int(ID)
 		samfile = pysam.AlignmentFile(x) 
 		names = []
