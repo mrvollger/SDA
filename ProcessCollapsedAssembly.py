@@ -983,7 +983,7 @@ rule duplicationsFasta:
 		else
 			which minimap2 	
 			minimap2 \
-					-ax asm10 \
+					-ax asm20 \
 					-N 30 \
 					--cs \
 					-t {threads} \

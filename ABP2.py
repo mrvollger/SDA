@@ -30,7 +30,7 @@ MM2 = False
 if("minimap" in config):
 	if(config["minimap"].lower() in ["t", "true"] ):
 		MM2=True
-bandwidth = "5000"
+bandwidth = " 70000 "
 
 # min cov is used to detemrine the filter for getting rid of low read assemblies. 
 MINREADS = int(config["MINCOV"]*1.0/2.0)
@@ -468,7 +468,7 @@ if(os.path.exists("duplications.fasta")):
 				{input.ref} {input.dup} \
 				-k 11 -a --eqx \
 				-r {bandwidth} \
-				-x asm10 | \
+				-x asm20 | \
 				samtools view -h -F 2308 - | \
 				samtools sort -m 4G -T tmp -o {output.refsam}
 
@@ -537,7 +537,7 @@ minimap2 \
 	{input.ref} {input.asm} \
 	-k 11 -a --eqx -t {threads} \
 	-r {bandwidth} \
-	-x asm10 | \
+	-x asm20 | \
 	samtools view -h -F 2308 - | \
 	samtools sort -m 4G -T tmp -o {output.refsam}
 
@@ -551,7 +551,7 @@ minimap2 \
 	{input.dup} {input.asm} \
 	-k 11 -a --eqx -t {threads} \
 	-r {bandwidth} \
-	-x asm10 | \
+	-x asm20 | \
 	samtools view -h -F 2308 - | \
 	samtools sort -m 4G -T tmp -o {output.dupsam}
 """

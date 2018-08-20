@@ -38,7 +38,6 @@ rule all:
 # likely to align a PSV as a mismatch rather than paired insertion and
 # deletion.
 #
-minaln="500"
 ISPB=True
 if("ont" in config):
 	if(config["ont"].lower() in ["t", "true"] ):
@@ -53,6 +52,11 @@ if("minimap" in config):
 		MM2=True
 
 bandwidth = "5000"
+
+# set a minimum alignment lenght 
+minaln = " 500 "
+if("minaln" in config):
+	minaln = config["minaln"]
 
 
 if(os.path.exists("reads.orig.bam") and ISPB and not MM2):
@@ -101,32 +105,33 @@ elif(os.path.exists("reads.orig.bam") and (not ISPB or MM2)):
 		output:
 			"reads.bam"
 		threads: 8
-		shell:
-			'''	
-			source {python3}
-			# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
-			samtools fastq {input.reads} | \
-				minimap2 \
-					-ax map-ont \
-					--cs \
-					-t {threads} \
-					-k 11 \
-					-A 3 \
-					-B 3 \
-					-O 9 \
-					-E 3 \
-					-r {bandwidth} \
-					-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
-					ref.fasta /dev/stdin | \
-					samtools view -bS -F 2308 - | \
-					samtools sort -m 4G -T tmp -o {output}
-			# cs adds a tag the generates info about insertion and deletion events 
-			# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
-			# actually i think I will allow chimeric, (allows jumps of large gaps)
-			# -A matching score -B mismatching score -E gap extenshion penalty 
+		shell:"""
+source {python3}
+# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
+samtools fastq {input.reads} | \
+	minimap2 \
+		-ax map-ont \
+		--cs \
+		-t {threads} \
+		-k 11 \
+		-A 3 \
+		-B 3 \
+		-O 9 \
+		-E 3 \
+		-s {minaln} \
+		-r {bandwidth} \
+		-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
+		ref.fasta /dev/stdin | \
+		samtools view -bS -F 2308 - | \
+		samtools sort -m 4G -T tmp -o {output}
+# cs adds a tag the generates info about insertion and deletion events 
+# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
+# actually i think I will allow chimeric, (allows jumps of large gaps)
+# -A matching score -B mismatching score -E gap extenshion penalty 
 
-			samtools index {output}
-			'''
+samtools index {output}
+"""
+
 else:
 	print("NO INPUT READS!!!")
 	exit()
