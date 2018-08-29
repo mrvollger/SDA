@@ -82,7 +82,7 @@ class LocalAssembly:
 
 	def toFile(self):
 		#fname = self.mydir + self.collapse + ".table.tsv"
-		fname = self.mydir + self.asm +  ".abp.table.tsv"
+		fname = self.mydir + self.asm +  ".sda.table.tsv"
 		subset = []
 		for col in list(self.all):
 			if(type(col) != np.int64 ):

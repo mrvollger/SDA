@@ -5,7 +5,7 @@ from Bio import Seq
 
 import argparse
 
-ap = argparse.ArgumentParser(description="Merge contigs from abp run")
+ap = argparse.ArgumentParser(description="Merge contigs from sda run")
 ap.add_argument("--assemblies", help="Assemblies", nargs="+")
 ap.add_argument("--out", help="Output file.", default="/dev/stdout")
 args = ap.parse_args()

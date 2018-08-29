@@ -37,7 +37,6 @@ snakemake -p \
 		-S /bin/bash" \
 	--jobs $jobNum \
 	--latency-wait $waitTime \
-	--restart-times $retry  \
 	$1 $2 # just a way to pass aditional arguments to snakemake, like --unlock 
 
 

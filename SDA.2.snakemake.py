@@ -16,8 +16,14 @@ base = snake_dir + "scripts/"
 python3 = snake_dir + "env_python3.cfg"
 python2 = snake_dir + "env_python2.cfg"
 
+
+if(os.path.exists("abp.config.json")):
+	cfile = "abp.config.json"
+else:
+	cfile = "sda.config.json"
 configfile:
-	"abp.config.json"
+	cfile
+
 
 
 ISONT=False
@@ -49,7 +55,7 @@ assemblers = ["canu", "wtdbg", "miniasm"]
 
 rule all:
 	input: "final",
-	message: "Running ABP2"
+	message: "Running SDA.2"
 
 
 
@@ -63,17 +69,19 @@ wildcard_constraints:
 # make the group directories, and create a file that jsut acts as a tag for when the dir was created
 #
 rule makeGroupDirs:
-    input:  expand('group.{ID}.vcf', ID=IDS)
-    output: 
-        group='group.{n}/',
-        tag='group.{n}/group.{n}'
-    shell:
-        """
-        rm -rf summary.py WH.assemblies.fasta
-		rm -rf {output.group} # the assemblies will not re run properlly unless it starts fresh 
-        mkdir -p {output.group} 
-        echo "{output.tag}" >  {output.tag} 
-        """
+	input:
+		vcfs=expand('group.{n}.vcf', n=IDS),
+	output: 
+		tag=expand('group.{n}/group.{n}', n=IDS)
+	run:
+        # remove final output
+		shell("rm -rf final *.assemblies.fasta")
+
+		for vcf, tag in zip(input["vcfs"], output["tag"] ):
+			group, ID, vcf = vcf.split(".")
+			curdir = "group.{}/".format(ID)
+			shell("rm -rf {}; mkdir -p {}; touch {}".format(curdir, curdir, tag))
+
 #-----------------------------------------------------------------------------------------------------#
 
 
@@ -297,7 +305,9 @@ else:
 				# create empty files, this will allow other rules to conitnue 
 				> {output.quiver}
 			else
-				source {python2}	
+				source deactivate  2> /dev/null
+				source {python2}
+				which quiver
 				quiver \
 					--noEvidenceConsensusCall nocall --minCoverage 10 -j {threads} \
 					-r {input.asm} -o {output.quiver} {input.asmbam} \
@@ -344,19 +354,7 @@ rule combineAsm:
 				toAdd.append(rec)
 		#print(rtn)
 		SeqIO.write(toAdd ,output["asm"], "fasta" ) 
-		
-		# remove extra files from assemblies, this speeds up the dag building for snakemake by a lot
-		shell("""rm -rf \
-				group.*/canu.assembly/canu-logs \
-				group.*/canu.assembly/canu-scripts \
-				group.*/canu.assembly/correction \
-				group.*/canu.assembly/correction.html.files \
-				group.*/canu.assembly/trimming \
-				group.*/canu.assembly/trimming.html.files \
-				group.*/canu.assembly/unitigging \
-				group.*/canu.assembly/unitigging.html.files """)
-
-
+	
 
 
 
@@ -420,8 +418,7 @@ if(os.path.exists("illumina.orig.bam")):
 			"""
 			samtools index {input.bam}
 			mkdir -p pilon_out
-			ls {snake_dir}software/pilon/pilon-1.22.jar
-			java -Xmx4G -jar {snake_dir}software/pilon/pilon-1.22.jar \
+			pilon \
 					--threads {threads} \
 					--genome {input.asmWH} \
 					--bam {input.bam} \
@@ -629,7 +626,7 @@ samtools depth -aa {output.bam} > {output.depth}
 			truthmatrix="truth/truth.matrix",
 		output:
 			summary="{ASM}.summary.txt",
-			table="{ASM}.abp.table.tsv",
+			table="{ASM}.sda.table.tsv",
 		shell:
 			"""
 			{base}/summary.py --assembler {wildcards.ASM} --summary {output.summary}
@@ -643,7 +640,7 @@ samtools depth -aa {output.bam} > {output.depth}
 	rule bedForTrack:
 		input:
 			bedx="ref.fasta.bed",
-			table="{ASM}.abp.table.tsv",
+			table="{ASM}.sda.table.tsv",
 			summary="{ASM}.summary.txt",
 			truthmatrix="truth/truth.matrix",
 		output:
@@ -795,9 +792,17 @@ rule final:
 		asms=expand("group.{ID}/{ASM}.assembly/asm.contigs.fasta", ID=IDS, ASM=assemblers),
 		truth="truth/README.txt",
 	output: 'final'
-	shell:
-		"""
-		touch {output}
-		"""
-
+	shell:"""
+touch {output}
+# remove extra files from assemblies, this speeds up the dag building for snakemake by a lot
+rm -rf \
+group.*/canu.assembly/canu-logs \
+group.*/canu.assembly/canu-scripts \
+group.*/canu.assembly/correction \
+group.*/canu.assembly/correction.html.files \
+group.*/canu.assembly/trimming \
+group.*/canu.assembly/trimming.html.files \
+group.*/canu.assembly/unitigging \
+group.*/canu.assembly/unitigging.html.files 
+"""
 

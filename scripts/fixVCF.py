@@ -26,15 +26,18 @@ vcf = re.sub("NA", "0", vcf)
 outbam = AlignmentFile( bam )
 
 # create a fake sample name 
-sampleName = re.findall("SM:[^(\s|\\\))]+", outbam.text )
-sampleName=list(set(sampleName))
-print(sampleName)
+sampleNames = re.findall("SM:[^(\s|\\\))]+", outbam.text )
+sampleNames=list(set(sampleNames))
+snames = []
+for name in sampleNames:
+	snames.append( re.sub("SM:", "", name) )
 
-assert len(sampleName)==1, "multiple sample names?" + str(sampleName)
-sampleName = re.sub("SM:", "", sampleName[0])
+print(snames)
 
 # replace the sample name
-vcf = re.sub("sample",sampleName,vcf)
+vcf = re.sub("sample","\t".join(snames), vcf)
+# add in genotpyes
+vcf = re.sub("\t0\|1:100\n", "\t0|1:100"*len(snames)+"\n", vcf)
 
 # make output vcf
 f = open(outvcf, "w+")

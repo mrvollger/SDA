@@ -8,7 +8,10 @@ shell.prefix("source %s/env_python2.cfg; " % snake_dir)
 #
 # script locations and configurations 
 #
-configFile = "abp.config.json"
+if(os.path.exists("abp.config.json")):
+	configFile = "abp.config.json"
+else:
+	configFile = "sda.config.json"
 configfile:
 	configFile	
 
@@ -17,7 +20,6 @@ MAXCOV=config["MAXCOV"]
 MINTOTAL=config["MINTOTAL"]
 
 base = snake_dir + "scripts/"
-#scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
 scriptsDir = snake_dir + "CCscripts/"
 python3 = snake_dir + "env_python3.cfg"
 python2 = snake_dir + "env_python2.cfg"
@@ -54,7 +56,8 @@ if("minimap" in config):
 bandwidth = "5000"
 
 # set a minimum alignment lenght 
-minaln = " 500 "
+# the minmum alignment length is set to be larger than a full length LINE element ~6 kbp. 
+minaln = "7000"
 if("minaln" in config):
 	minaln = config["minaln"]
 
@@ -79,7 +82,7 @@ blasr {input.reads} {input.ref} \
 	--nproc {threads} --bestn 1 \
 	--mismatch 3 --insertion 9 --deletion 9 \
 	--minAlignLength {minaln} \
-	--minMatch 8 | \
+	--minMatch 13 | \
 	 samtools view -bS -F 4 - | \
 	 samtools sort -m 4G -T tmp -o {output}
 
@@ -307,10 +310,6 @@ rule SNVtable_to_SNVmatrix:
     shell:
        '{scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvsPos} --mat {output.mat}'  
 
-#
-# create duplicaitons.fasta
-# this was moved to the pre processing step 
-#
 
 #
 # Set up the ground truth if it exists.  Map the collapsed sequence

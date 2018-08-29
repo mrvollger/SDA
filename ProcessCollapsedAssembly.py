@@ -39,7 +39,8 @@ configfile: configFileName
 reference = config["asm"]
 print("The reference is this file: {}".format(reference))
 
-
+if("job_fmt" not in config): 
+	job_fmt=" -pe serial {} -l mfree={}G -l h_rt={}"
 
 
 localrules: all, 
@@ -47,10 +48,13 @@ localrules: all,
 			GetOneKregionCoverage,
 			FiveKWindowStepOneK,
 			MergeBedForCollapses, 
+			getHighIdentity,
 			ConvertTsvToBedAndRgn,
 			MergeBed, 
 			combineRefFasta,
 			StartFofn,
+			getReferenceSequences,
+			intersectGenes,
 			GenerateBatchRunScript,
 			LocalAssembliesBed,
 			illuminaDone,
@@ -65,6 +69,8 @@ rule all:
 		illumina="illumina/done.txt",
 
 DIRS = "benchmarks reference fofns coverage LocalAssemblies alignments" 
+
+
 #
 # geting ready to run tfg by splitting up the genome into 10 parts to run seperatly 
 #
@@ -328,6 +334,7 @@ rule indexForMinimap:
 #
 #  For read depth, and other future steps, it is necessary to map reads back to the assembly.
 #
+MINALN=7000 # ~ max size of a LINE
 rule MapReads:
 	input:
 		asm=reference,
@@ -351,6 +358,7 @@ rule MapReads:
 			# a read to be able to map to both halves.
 			blasr {input.fofn} {input.asm}  \
 					--sa {input.asmsa} \
+					--minAlnLength {MINALN} \
 					--sdpTupleSize 13 \
 					--maxMatch 25 \
 					--bestn 2 \
@@ -596,7 +604,7 @@ rule GenerateMinAndMax:
 		stats="coverage/all.stats.txt"
 	output:
 		#minmax="MinMax.sh",
-		json="config/abp.config.json",
+		json="config/sda.config.json",
 	params:
 		cluster=" -pe serial 1 -l mfree=1G -l h_rt=24:00:00",
 	run:
@@ -893,35 +901,47 @@ rule LocalAssembliesBam:
 	params:
 		cluster=" -pe serial 1 -l mfree=4G -l h_rt=24:00:00",
 	run:
-		import pysam
-		myfile = open(input["rgn"])
-		region = myfile.read().strip()
-		myfile.close()
+		#import pysam
+		#myfile = open(input["rgn"])
+		#region = myfile.read().strip()
+		#myfile.close()
 
 		bed = open(input["bed"]).read().strip()
 		token = bed.split()
-		
-		allreads = None
-		for idx, bam in enumerate(sorted(glob.glob("alignments/align.*.bam"))):
-			samfile = pysam.AlignmentFile(bam, "rb")
-			if(idx == 0 ):
-				allreads = pysam.AlignmentFile(output["bams"], "wb", template=samfile)
+		chrm = token[0]
+		start = token[1]
+		end = token[2]
 
-			for read in samfile.fetch(token[0], int(token[1]), int(token[2])):
-				allreads.write(read)
-			samfile.close()		
-		allreads.close()
+		#allreads = None
+		cmd = ""
+		tmpprefix = "LocalAssemblies/" + wildcards["region"] + "/tmp."
+		for idx, bam in enumerate(sorted(glob.glob("alignments/align.*.bam"))):
+			tmpbam = tmpprefix + str(idx) + ".bam"
+			cmd += "samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam)  			
+		
+		shell(cmd)
+		shell("samtools merge {} {}*.bam".format(output["bams"], tmpprefix) )
+		shell("rm {}*.bam".format(tmpprefix) )
+		#	
+			#samfile = pysam.AlignmentFile(bam, "rb")
+			#if(idx == 0 ):
+			#	allreads = pysam.AlignmentFile(output["bams"], "wb", template=samfile)
+
+			#for read in samfile.fetch(token[0], int(token[1]), int(token[2])):
+			#	allreads.write(read)
+			#samfile.close()		
+		#allreads.close()
 		
 
 #
-# copy ofver the min max stats so that ABP knows mincov, maxcov, mintotal
+# copy ofver the min max stats so that SDA knows mincov, maxcov, mintotal
 #
 rule LocalAssembliesConfig:
 	input:
 		json=rules.GenerateMinAndMax.output.json,
 		bams=rules.LocalAssembliesBam.output.bams,
 	output:
-		cov="LocalAssemblies/{region}/abp.config.json",
+		cov="LocalAssemblies/{region}/sda.config.json",
 	params:
 		cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
 		project=config["project"],
@@ -947,7 +967,7 @@ rule combineRefFasta:
 	output:
 		allref="LocalAssemblies/all.ref.fasta",
 	params:
-		cluster=" -pe serial 4 -l mfree=4G -l h_rt=3:00:00", # must be local to compress dynamic on rerun startign at this point. so it is now a local rule
+		cluster=" -pe serial 1 -l mfree=4G -l h_rt=3:00:00", # must be local to compress dynamic on rerun startign at this point. so it is now a local rule
 	shell:
 		"""
 		> {output.allref}
@@ -969,32 +989,41 @@ rule duplicationsFasta:
 	params:
 		cluster=" -pe serial 8 -l mfree=8G -l h_rt=12:00:00",
 	threads: 8
-	shell:
-		"""
-		samtools faidx {input.dupref}
-		if [ "noblasr" == "blasr" ]; then 
-			blasr --nproc {threads} \
-					--sa {sa} \
-					--sam \
-					--out - \
-					--minMatch 11 --maxMatch 20 --nCandidates 50 --bestn 30 \
-					{input.dupref} {GRCh38} | \
-					samtools view -h -F 4 - | samtools sort -@ {threads} -m 8G -T tmp -o {output.dupsam}
-		else
-			which minimap2 	
-			minimap2 \
-					-ax asm20 \
-					-N 30 \
-					--cs \
-					-t {threads} \
-					{GRCh38} {input.dupref} | \
-					samtools view -h -F 4 - | \
-					samtools sort -m 4G -T tmp -o {output.dupsam}
-			# cs adds a tag the generates info about insertion and deletion events 
-			# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
-			# actually i think I will allow chimeric, (allows jumps of large gaps)
-		fi 
-		"""
+	shell:""" samtools faidx {input.dupref}
+if [ "blasr" == "blasr" ]; then 
+	source ~/.bashrc
+	blasr -nproc {threads} \
+			-sa {sa} \
+			-sam \
+			-out /dev/stdout \
+			-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
+			{input.dupref} {GRCh38} | \
+			samtools view -h -F 4 - | samtools sort -@ {threads} -m 8G -T tmp -o {output.dupsam}
+else
+	# minimap does not work nearly as well as blasr for this. So if you can install an old version of blasr please do
+	which minimap2 	
+	#asm5 asm10 asm20; do 
+	for setting in asm20; do
+		minimap2 \
+				-ax $setting \
+				-N 30 \
+				--cs \
+				-r 100000 \
+				-t {threads} \
+				{GRCh38} {input.dupref} | \
+				samtools view -h -F 4 - | \
+				samtools sort -m 4G -T tmp -o LocalAssemblies/$setting".sam"
+		# cs adds a tag the generates info about insertion and deletion events 
+		# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
+		# actually i think I will allow chimeric, (allows jumps of large gaps)
+	done
+
+	#grep --no-filename "^@" LocalAssemblies/asm*.sam | sort | uniq > {output.dupsam}
+	grep --no-filename "^@" LocalAssemblies/asm*.sam  > {output.dupsam}
+	grep --no-filename -v "^@" LocalAssemblies/asm*.sam >> {output.dupsam}
+
+fi 
+"""
 		
 #
 # filter the sam file to only include high identity long contigs 
@@ -1009,13 +1038,8 @@ rule getHighIdentity:
 		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
 	shell:
 		"""
-		#source {python2}
-		#{params.samutils}/samToBed {input.dupsam} --reportIdentity > {output.duptsv}
-		
 		{snake_dir}/scripts/samIdentity.py --header {input.dupsam} > {output.duptsv}
 		"""
-
-
 #
 # generate two bed file for each assmebliy, one with the region of the collapse, and one with 100000 bp of slop 
 # on either side
@@ -1038,28 +1062,34 @@ rule ConvertTsvToBedAndRgn:
 		df.reset_index(drop=True, inplace=True)
 		
 		allbed = "LocalAssemblies/all.ref.fasta.bed"
-		df[["reference_name", "reference_start", "reference_end"]].to_csv(allbed, sep="\t", index=False, header=False)
-		
+		df[["reference_name", "reference_start", "reference_end"]].sort_values(by=['reference_name', 'reference_start']).to_csv(allbed, sep="\t", index=False, header=False)
+		#shell("bedtools merge -d 5000 -i {} > {}".format(allbed + ".tmp", allbed ) )	
 		shell("bedtools slop -i {} -g {} -b 100000 > {}".format(allbed, fai, allbed+".slop"))	
 		slop = pd.read_csv( allbed + ".slop", sep="\t", header=None, names=["contig", "start", "end"])
-		df["longstart"] = slop["start"]
-		df["longend"] = slop["end"]
+		df["longstart"] = slop["start"].astype('int64')
+		df["longend"] = slop["end"].astype('int64')
 
-		grouped = df.groupby(["read"])
+		grouped = df.groupby(["query_name"])
+		counter = 0
 		for name, group in grouped:
-			match =  re.search('(.+):(\d+)-(\d+)/.*', name)
+			counter += 1
+			match =  re.search('(.+):(\d+)-(\d+).*', name)
+			print(name, counter)
 			if(match):
 				region = "{}.{}.{}".format(match.group(1),match.group(2),match.group(3))
 				# short bed file
 				outfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
-				group[["contig", "start", "end"]].to_csv(outfile, sep="\t", index=False, header=False)
-				shell( "sort -u {} -o {}".format(outfile, outfile) ) # remove duplicates 
+				group[["reference_name", "reference_start", "reference_end"]].drop_duplicates().to_csv(outfile, sep="\t", index=False, header=False)
+				#shell( "sort -u {} -o {}".format(outfile, outfile) ) # remove duplicates 
 				# long bed file
 				outfile2 = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
-				group[["contig", "longstart", "longend"]].to_csv(outfile2, sep="\t", index=False, header=False)
-				shell( "sort -u {} -o {}".format(outfile2, outfile2) ) # remove duplicates 
+				group[["reference_name", "longstart", "longend"]].drop_duplicates().to_csv(outfile2, sep="\t", index=False, header=False)
+				#shell( "sort -u {} -o {}".format(outfile2, outfile2) ) # remove duplicates 
 		shell("touch " + output["bedDone"])
-					
+	
+
+
+
 #
 # actaully fetch that region from the genome 
 #
@@ -1068,11 +1098,14 @@ rule getReferenceSequences:
 		bedDone="LocalAssemblies/bed.done.txt",
 		regions="LocalAssemblies/regions.txt",
 	output:
-		refDone="LocalAssemblies/DONEREF.txt",
+		refDone="LocalAssemblies/ref.done.txt",
 	params:
 		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00 ",
 	run:
 		regions = open(input["regions"])
+
+		groups = []
+
 		for region in regions.readlines(): 
 			region = region.strip()[:-1]
 			bedfile = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
@@ -1080,7 +1113,16 @@ rule getReferenceSequences:
 			# the awk part gets rid of duplicates 
 			cmd = "bedtools getfasta -fi {} -bed {} | awk '!a[$0]++' > {}".format(GRCh38, bedfile, fastafile)
 			if(os.path.exists(bedfile)):
-				shell(cmd)
+				groups.append(cmd)
+		
+		start = 0
+		for end in range(0, len(groups), 50):
+			cmd = " ; ".join(groups[start:end])
+			shell(cmd)
+			start = end
+		cmd = " ; ".join(groups[start:len(groups)])
+		shell(cmd)
+
 		shell("touch " + output["refDone"])
 
 
@@ -1099,13 +1141,22 @@ rule intersectGenes:
 		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00 ",
 	run:
 		regions = open(input["regions"])
+		groups=[]
 		for region in regions.readlines(): 
 			region = region.strip()[:-1]
 			bedfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
 			outgenes = "LocalAssemblies/{}/ref.fasta.genes.bed".format(region)
 			cmd = "bedtools intersect -wo -a {} -b {} | bedtools sort -i - > {} ".format(genes, bedfile, outgenes)
 			if(os.path.exists(bedfile)):
-				shell(cmd)
+				groups.append(cmd)
+		
+		start = 0
+		for end in range(0, len(groups), 50):
+			cmd = " ; ".join(groups[start:end])
+			shell(cmd)
+			start = end
+		cmd = " ; ".join(groups[start:len(groups)])
+		shell(cmd)
 		
 		shell("touch " + output["mydone"])
 
@@ -1149,7 +1200,7 @@ arrayScript = """#!/usr/bin/env  bash
 
 
 cwd=`awk "NR == $SGE_TASK_ID"  regions.txt`
-/net/eichler/vol2/home/mvollger/projects/abp/ABP $cwd
+/net/eichler/vol2/home/mvollger/projects/abp/SDA $cwd
 
 """
 

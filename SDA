@@ -1,0 +1,20 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+echo $DIR
+source $DIR/env_python3.cfg
+NPROC=$(nproc)
+
+one="snakemake --rerun-incomplete -p --cores $NPROC -s $DIR/SDA.1.snakemake.py $@"
+two="snakemake --rerun-incomplete -p --cores $NPROC -s $DIR/SDA.2.snakemake.py $@"
+
+# run the pipeline
+if [ "$1" == "SDA1" ]; then
+	$one
+elif [ "$1" == "SDA2" ]; then
+	$two
+else
+	$one && $two
+fi 
+
+
+
