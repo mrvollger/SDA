@@ -20,6 +20,10 @@ MAXCOV=config["MAXCOV"]
 MINTOTAL=config["MINTOTAL"]
 
 base = snake_dir + "scripts/"
+<<<<<<< HEAD:SDA.1.snakemake.py
+=======
+#scriptsDir = '/net/eichler/vol5/home/mchaisso/projects/AssemblyByPhasing/scripts/abp'
+>>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf:ABP1.py
 scriptsDir = snake_dir + "CCscripts/"
 python3 = snake_dir + "env_python3.cfg"
 python2 = snake_dir + "env_python2.cfg"
@@ -40,6 +44,10 @@ rule all:
 # likely to align a PSV as a mismatch rather than paired insertion and
 # deletion.
 #
+<<<<<<< HEAD:SDA.1.snakemake.py
+=======
+minaln="500"
+>>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf:ABP1.py
 ISPB=True
 if("ont" in config):
 	if(config["ont"].lower() in ["t", "true"] ):
@@ -55,12 +63,15 @@ if("minimap" in config):
 
 bandwidth = "5000"
 
+<<<<<<< HEAD:SDA.1.snakemake.py
 # set a minimum alignment lenght 
 # the minmum alignment length is set to be larger than a full length LINE element ~6 kbp. 
 minaln = "7000"
 if("minaln" in config):
 	minaln = config["minaln"]
 
+=======
+>>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf:ABP1.py
 
 if(os.path.exists("reads.orig.bam") and ISPB and not MM2):
 
@@ -82,7 +93,11 @@ blasr {input.reads} {input.ref} \
 	--nproc {threads} --bestn 1 \
 	--mismatch 3 --insertion 9 --deletion 9 \
 	--minAlignLength {minaln} \
+<<<<<<< HEAD:SDA.1.snakemake.py
 	--minMatch 13 | \
+=======
+	--minMatch 8 | \
+>>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf:ABP1.py
 	 samtools view -bS -F 4 - | \
 	 samtools sort -m 4G -T tmp -o {output}
 
@@ -108,6 +123,7 @@ elif(os.path.exists("reads.orig.bam") and (not ISPB or MM2)):
 		output:
 			"reads.bam"
 		threads: 8
+<<<<<<< HEAD:SDA.1.snakemake.py
 		shell:"""
 source {python3}
 # @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
@@ -135,6 +151,34 @@ samtools fastq {input.reads} | \
 samtools index {output}
 """
 
+=======
+		shell:
+			'''	
+			source {python3}
+			# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
+			samtools fastq {input.reads} | \
+				minimap2 \
+					-ax map-ont \
+					--cs \
+					-t {threads} \
+					-k 11 \
+					-A 3 \
+					-B 3 \
+					-O 9 \
+					-E 3 \
+					-r {bandwidth} \
+					-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
+					ref.fasta /dev/stdin | \
+					samtools view -bS -F 2308 - | \
+					samtools sort -m 4G -T tmp -o {output}
+			# cs adds a tag the generates info about insertion and deletion events 
+			# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
+			# actually i think I will allow chimeric, (allows jumps of large gaps)
+			# -A matching score -B mismatching score -E gap extenshion penalty 
+
+			samtools index {output}
+			'''
+>>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf:ABP1.py
 else:
 	print("NO INPUT READS!!!")
 	exit()
