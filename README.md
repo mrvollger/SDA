@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 # Segmental Duplication Assembler (SDA)
-=======
-
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 
 
 # Download: #
@@ -11,11 +7,7 @@ git clone --recurse-submodules -j8 git://github.com/mvollger/abp_v2.git
 ```
 
 # Install: #
-<<<<<<< HEAD
 The requirements for SDA are taken care of my two conda environments (abp-python-2 and abp-python-3). In order to get this running you must already have anaconda 3 installed somewhere on your system. 
-=======
-The requirements for ABP are taken care of my two conda environments (abp-python-2 and abp-python-3). In order to get this running you must already have anaconda 3 installed somewhere on your system. 
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 
 Once that is done modify `env_conda.cfg` so that it adds conda to your path. The `CONDA_PATH` variable must be set so that it points at you conda installation. Here is an example of what your `env_conda.cfg` might look like.
 ```
@@ -39,11 +31,7 @@ make
 ```
 
 # Setup: #
-<<<<<<< HEAD
 SDA requires some files to be run.
-=======
-ABP requires some files to be run.
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 ```
 ref.fasa # collapsed representation of a segmental duplication
 reads.orig.bam # reads aligning to the collapsed duplication. Note if you want error correction by quiver to happen these reads must be aligned using PacBio’s version of Blasr to preserve quality values. 
@@ -53,17 +41,9 @@ reads.orig.bam # reads aligning to the collapsed duplication. Note if you want e
 
 # Run: #
 
-<<<<<<< HEAD
 SDA is run by a snakemake script. While SDA should run correctly as long as the setup files are properly in place you may find some knowledge of snakemake useful in running SDA.  
 
 If the github repo is added to your path just type `SDA` if not type `/path/to/git/repo/SDA`.
-=======
-ABP is run by a snakemake script. While ABP should run correctly as long as the setup files are properly in place you may find some knowledge of snakemake useful in running ABP.  
-
-If the github repo is added to your path just type `ABP` if not type `/path/to/git/repo/ABP`.
-
-Optionally ABP accepts as an argument a path where it will execute, e.g. `ABP /path/to/collapsed/duplication`
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 
 
 

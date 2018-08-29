@@ -18,10 +18,7 @@ ap.add_argument("--embed", help="Stop in ipython shell.", action='store_true', d
 ap.add_argument("--cuts", help="Write cuts to this file.", default=None)
 ap.add_argument("--scores", help="Write the different CC scores to an output file", default="CC.scores.txt")
 ap.add_argument("--starts", help="Number of times to rerun CC looking for a better score", type=int, default=15)
-<<<<<<< HEAD
 ap.add_argument("--minlen", help="minimum length of a psv cluster", type=int, default=9000)
-=======
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 ap.add_argument("--sites", help="Write sites of cuts to this file.", default=None)
 ap.add_argument("--seed", help="Do not seed the random number generator with a fixed value. This will cause runs on the same dataset to have different results.", default=True, action='store_false')
 # added by mrv 2/21/18
@@ -579,7 +576,6 @@ def FilterConflictingNodes(gAdjList, repulsion, cuts, nodes, cutoff):
             if min(neighborMembers.values()) > cutoff:
                 cuts[cutIndices[node]].difference_update(Set([node]))
 
-<<<<<<< HEAD
 # this function removes small clusters (less than 3), or cuts that are really samll in length (9kbp)
 # this is because it could be a LINE element, and it is also the minimum default collapse size
 def RemoveSmallCuts(cuts, minCutSize=3):
@@ -592,16 +588,7 @@ def RemoveSmallCuts(cuts, minCutSize=3):
 			cuts.remove(cuts[i])
 		else:
 			i+=1
-=======
-def RemoveSmallCuts(cuts, minCutSize=3):
-    i = 0
-    while i < len(cuts):
-        if len(cuts[i]) < minCutSize:
-            cuts.remove(cuts[i])
-        else:
-            i+=1
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
-    
+   
 
 def AddRepulsionEdges(g, repulsion):
     for src in repulsion.keys():
@@ -810,17 +797,10 @@ if args.cuts is not None:
     cutsFile.close()
 
 if args.sites is not None:
-<<<<<<< HEAD
 	sitesFile = open(args.sites, 'w')
 	for cut in cuts:
 		sites = sorted([int(g.node[n]['pos']) for n in cut])
 		sitesFile.write("\t".join(str(s) for s in sites ) + "\n")
-=======
-    sitesFile = open(args.sites, 'w')
-    for cut in cuts:
-	sites = sorted([int(g.node[n]['pos']) for n in cut])
-        sitesFile.write("\t".join(str(s) for s in sites ) + "\n")
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
     
 if args.out is not None:
     allCuts = Set()

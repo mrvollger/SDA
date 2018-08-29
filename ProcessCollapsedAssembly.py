@@ -360,10 +360,7 @@ rule MapReads:
 			# a read to be able to map to both halves.
 			blasr {input.fofn} {input.asm}  \
 					--sa {input.asmsa} \
-<<<<<<< HEAD
 					--minAlnLength {MINALN} \
-=======
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 					--sdpTupleSize 13 \
 					--maxMatch 25 \
 					--bestn 2 \
@@ -921,34 +918,12 @@ rule LocalAssembliesBam:
 		cmd = ""
 		tmpprefix = "LocalAssemblies/" + wildcards["region"] + "/tmp."
 		for idx, bam in enumerate(sorted(glob.glob("alignments/align.*.bam"))):
-<<<<<<< HEAD
 			tmpbam = tmpprefix + str(idx) + ".bam"
-			cmd += "samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam)  			
+				cmd += "samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam)  			
 		
 		shell(cmd)
 		shell("samtools merge {} {}*.bam".format(output["bams"], tmpprefix) )
 		shell("rm {}*.bam".format(tmpprefix) )
-		#	
-			#samfile = pysam.AlignmentFile(bam, "rb")
-			#if(idx == 0 ):
-			#	allreads = pysam.AlignmentFile(output["bams"], "wb", template=samfile)
-
-			#for read in samfile.fetch(token[0], int(token[1]), int(token[2])):
-			#	allreads.write(read)
-			#samfile.close()		
-		#allreads.close()
-=======
-			samfile = pysam.AlignmentFile(bam, "rb")
-			if(idx == 0 ):
-				allreads = pysam.AlignmentFile(output["bams"], "wb", template=samfile)
-
-			for read in samfile.fetch(token[0], int(token[1]), int(token[2])):
-				allreads.write(read)
-			samfile.close()		
-		allreads.close()
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
-		
-
 #
 # copy ofver the min max stats so that SDA knows mincov, maxcov, mintotal
 #
@@ -1005,7 +980,6 @@ rule duplicationsFasta:
 	params:
 		cluster=" -pe serial 8 -l mfree=8G -l h_rt=12:00:00",
 	threads: 8
-<<<<<<< HEAD
 	shell:""" samtools faidx {input.dupref}
 if [ "blasr" == "blasr" ]; then 
 	source ~/.bashrc
@@ -1041,35 +1015,7 @@ else
 
 fi 
 """
-=======
-	shell:
-		"""
-		samtools faidx {input.dupref}
-		if [ "noblasr" == "blasr" ]; then 
-			blasr --nproc {threads} \
-					--sa {sa} \
-					--sam \
-					--out - \
-					--minMatch 11 --maxMatch 20 --nCandidates 50 --bestn 30 \
-					{input.dupref} {GRCh38} | \
-					samtools view -h -F 4 - | samtools sort -@ {threads} -m 8G -T tmp -o {output.dupsam}
-		else
-			which minimap2 	
-			minimap2 \
-					-ax asm10 \
-					-N 30 \
-					--cs \
-					-t {threads} \
-					{GRCh38} {input.dupref} | \
-					samtools view -h -F 4 - | \
-					samtools sort -m 4G -T tmp -o {output.dupsam}
-			# cs adds a tag the generates info about insertion and deletion events 
-			# removed flaggs 4 (unmapped) + 256 (secondary) + 2048 (chimeric)
-			# actually i think I will allow chimeric, (allows jumps of large gaps)
-		fi 
-		"""
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
-		
+	
 #
 # filter the sam file to only include high identity long contigs 
 #
@@ -1083,12 +1029,6 @@ rule getHighIdentity:
 		cluster=" -pe serial 1 -l mfree=4G -l h_rt=1:00:00",
 	shell:
 		"""
-<<<<<<< HEAD
-=======
-		#source {python2}
-		#{params.samutils}/samToBed {input.dupsam} --reportIdentity > {output.duptsv}
-		
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 		{snake_dir}/scripts/samIdentity.py --header {input.dupsam} > {output.duptsv}
 		"""
 #
@@ -1113,13 +1053,10 @@ rule ConvertTsvToBedAndRgn:
 		df.reset_index(drop=True, inplace=True)
 		
 		allbed = "LocalAssemblies/all.ref.fasta.bed"
-<<<<<<< HEAD
+		
 		df[["reference_name", "reference_start", "reference_end"]].sort_values(by=['reference_name', 'reference_start']).to_csv(allbed, sep="\t", index=False, header=False)
 		#shell("bedtools merge -d 5000 -i {} > {}".format(allbed + ".tmp", allbed ) )	
-=======
-		df[["reference_name", "reference_start", "reference_end"]].to_csv(allbed, sep="\t", index=False, header=False)
 		
->>>>>>> c5f142477186657859a42b2bb5fa5f5213be97cf
 		shell("bedtools slop -i {} -g {} -b 100000 > {}".format(allbed, fai, allbed+".slop"))	
 		slop = pd.read_csv( allbed + ".slop", sep="\t", header=None, names=["contig", "start", "end"])
 		df["longstart"] = slop["start"].astype('int64')
