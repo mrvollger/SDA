@@ -77,6 +77,9 @@ DIRS = "benchmarks reference fofns coverage LocalAssemblies alignments"
 # geting ready to run tfg by splitting up the genome into 10 parts to run seperatly 
 #
 splitSize = 20 
+recs = list(SeqIO.parse( config["asm"], "fasta"))
+if(splitSize > len(recs)):
+	splitSize = len(recs)
 rule splitRef:
 	input:
 		ref=config["asm"]
@@ -142,8 +145,10 @@ rule RepeateMasker:
 	shell:
 		"""
 		dir=reference/mask{wildcards.idx}
-		module load perl/5.14.2
-		module load RepeatMasker/3.3.0
+		
+		#module load perl/5.14.2
+		#module load RepeatMasker/3.3.0
+		
 		RepeatMasker -e wublast \
 				-species human \
 				-dir $dir \
@@ -313,11 +318,12 @@ rule SplitFOFN:
 		baxPerJob=config["bax_per_job"]
 	shell:
 		"""
-		echo {input.mystart}
-		split --numeric --lines {params.baxPerJob} {input.fofn} reads.
-		for f in `ls reads*`; do
-		mv $f fofns/$f.fofn
-		done
+		fofn=$(readlink -f {input.fofn})
+		cd fofns 
+		split --numeric --lines {params.baxPerJob} $fofn reads.
+		for f in $(ls reads.*); do
+			mv $f $f.fofn 
+		done 
 		"""
 
 
@@ -919,7 +925,7 @@ rule LocalAssembliesBam:
 		tmpprefix = "LocalAssemblies/" + wildcards["region"] + "/tmp."
 		for idx, bam in enumerate(sorted(glob.glob("alignments/align.*.bam"))):
 			tmpbam = tmpprefix + str(idx) + ".bam"
-				cmd += "samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam)  			
+			cmd += "samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam)  			
 		
 		shell(cmd)
 		shell("samtools merge {} {}*.bam".format(output["bams"], tmpprefix) )
