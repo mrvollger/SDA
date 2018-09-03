@@ -18,19 +18,23 @@ export PATH=$CONDA_PATH/bin:$PATH
 
 ```
 
-Once the anaconda environment in your path and `env_conda.cfg` has been updated the `Makefile` can be run with:
+Once the anaconda environment is in your path and `env_conda.cfg` has been updated the `Makefile` can be run with:
 ```
 make
 ```
 
-# Setup: #
+
+
+
+# Run: #
+
+## Required files: ##
 SDA requires some files to be run.
 ```
 ref.fasa # collapsed representation of a segmental duplication
 reads.orig.bam # reads aligning to the collapsed duplication. Note if you want error correction by quiver to happen these reads must be aligned using PacBio’s version of Blasr to preserve quality values. 
 sda.config.json
 ```
-
 The file `sda.config.json` must have three values set:
  `MINCOV` should be set to a depth value above the average depth of sequencing error, `MAXCOV` should be set to a value around the average read depth, and `MINTOTAL` should be set to the minimum expected coverage for a collapsed duplication. 
 Below is an example of what the file might look like:
@@ -42,9 +46,11 @@ Below is an example of what the file might look like:
 }
 ```
 
-# Run: #
 
-SDA is run by a snakemake script. While SDA should run correctly as long as the setup files are properly in place you may find some knowledge of snakemake useful in running SDA.  
+
+## Running: ##
+
+SDA is run by a snakemake script. While SDA should run correctly as long as the required files are properly in place you may find some knowledge of snakemake useful in running SDA.  
 
 If the github repo is added to your path just type `SDA` if not type `/path/to/git/repo/SDA`.
 
