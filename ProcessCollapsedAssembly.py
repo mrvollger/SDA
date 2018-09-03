@@ -142,19 +142,19 @@ rule RepeateMasker:
 		RMout = "reference/mask{idx}/ref.{idx}.fasta.out"
 	params:
 		cluster=" -pe serial 4 -l mfree=8G -l h_rt=12:00:00",
-	shell:
-		"""
-		dir=reference/mask{wildcards.idx}
-		
-		#module load perl/5.14.2
-		#module load RepeatMasker/3.3.0
-		
-		RepeatMasker -e wublast \
-				-species human \
-				-dir $dir \
-				-pa 4 \
-				{input.split}
-		"""
+	shell:"""
+dir=reference/mask{wildcards.idx}
+#module load perl/5.14.2
+#module load RepeatMasker/3.3.0
+#-e wublast \
+
+RepeatMasker \
+-species human \
+-dir $dir \
+-pa 4 \
+{input.split}
+
+"""
 
 #
 #
@@ -375,7 +375,7 @@ rule MapReads:
 					--nproc {threads} \
 					--bam --out - | \
 				samtools view -b -F 4 - | \
-				samtools sort -T {TMPDIR}/blasr -@ 8 -m 8G - -o {output.align}
+				samtools sort -@ {threads} -m 2G - -o {output.align}
 			""")
 		else: # the reads are ont or not foramted like pb
 			print("Running minimap2 on ONT")
@@ -386,7 +386,7 @@ rule MapReads:
 				-t {threads} \
 				{input.mmi} $(cat {input.fofn}) | \
 				samtools view -bS -F 2308 - | \
-				samtools sort -m 8G -T {TMPDIR}/minimap2 -o {output.align}
+				samtools sort -@ {threads} -m 2G -o {output.align}
 			""")
 
 
@@ -1296,7 +1296,7 @@ if("illumina" in config):
 			asm_index = os.path.dirname(os.path.realpath(reference)) + "/bwa"	
 			cmd = "bwa mem -M -t {threads} " + asm_index 
 			cmd += " {input.read1} {input.read2} | samtools view -bS -F 4 - | "
-			cmd += " samtools sort -T {TMPDIR}/bwa -@ {threads} -m 8G - -o {output.align}"
+			cmd += " samtools sort -@ {threads} -m 8G - -o {output.align}"
 			shell(cmd)
 
 	rule indexBWA:

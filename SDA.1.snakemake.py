@@ -41,13 +41,12 @@ rule all:
 # deletion.
 #
 ISPB=True
-if("ont" in config):
-	if(config["ont"].lower() in ["t", "true"] ):
-		ISPB=False
 ISONT=False
 if("ont" in config):
 	if(config["ont"].lower() in ["t", "true"] ):
+		ISPB=False
 		ISONT=True
+
 MM2 = False
 if("minimap" in config):
 	if(config["minimap"].lower() in ["t", "true"] ):
@@ -222,16 +221,15 @@ rule create_nucfreq_from_reads:
 		ref="ref.fasta",
 	output:
 		nucfreq="snvs/assembly.consensus.nucfreq",
-	shell:
-		"""
-		echo "Sam to nucfreq"
-		samtools mpileup -q 0 -Q 0 {input.reads} | \
-				{base}/MpileupToFreq.py  /dev/stdin | \
-				{base}/PrintHetFreq.py {MINCOV} \
-				--maxCount {MINCOV} \
-				--minTotal {MINTOTAL} \
-				> {output.nucfreq}
-		"""
+	shell:"""
+echo "Sam to nucfreq"
+samtools mpileup -q 0 -Q 0 {input.reads} | \
+	{base}/MpileupToFreq.py  /dev/stdin | \
+	{base}/PrintHetFreq.py {MINCOV} \
+	--maxCount {MINCOV} \
+	--minTotal {MINTOTAL} \
+	> {output.nucfreq}
+"""
 
 
 
@@ -267,34 +265,33 @@ rule create_SNVtable_from_reads:
 		vcf="snvs/assembly.consensus.nucfreq.vcf",
 		filt="snvs/assembly.consensus.nucfreq.filt",
 		frag="snvs/assembly.consensus.fragments",
-	shell:
-		"""
-		echo "filter nucfreq"
-		# this actaully only really creates the frag file, all filtering should be done by PrintHetfreq
-		samtools view -h reads.sample.bam | \
-				{base}/readToSNVList  \
-				--nft {input.nucfreq} \
-				--sam /dev/stdin \
-				--ref {input.ref} \
-				--minFraction 0.01 \
-				--minCoverage {MINCOV} \
-				--out {output.frag} \
-				--nftOut {output.filt}
-		
-		echo "filtered to vcf"
-		{scriptsDir}/FreqToSimpleVCF.py --freq {output.filt} \
-				--ref {input.ref} \
-				--out {output.vcf} 
-		
-		echo "vcf to snv"
-		{scriptsDir}/FragmentsToSNVList.py  \
-				--fragment \
-				--frags {output.frag} \
-				--vcf {output.vcf} \
-				--out {output.snv}
+	shell:"""
+echo "filter nucfreq"
+# this actaully only really creates the frag file, all filtering should be done by PrintHetfreq
+samtools view -h reads.sample.bam | \
+		{base}/readToSNVList  \
+		--nft {input.nucfreq} \
+		--sam /dev/stdin \
+		--ref {input.ref} \
+		--minFraction 0.01 \
+		--minCoverage {MINCOV} \
+		--out {output.frag} \
+		--nftOut {output.filt}
+
+echo "filtered to vcf"
+{scriptsDir}/FreqToSimpleVCF.py --freq {output.filt} \
+		--ref {input.ref} \
+		--out {output.vcf} 
+
+echo "vcf to snv"
+{scriptsDir}/FragmentsToSNVList.py  \
+		--fragment \
+		--frags {output.frag} \
+		--vcf {output.vcf} \
+		--out {output.snv}
 
 
-		"""
+"""
 
 
 #

@@ -164,6 +164,9 @@ class LocalAssembly:
 				status.append("Resolved")
 				self.numR += 1
 		add = pd.DataFrame({"CC_ID":self.ids, "Status":status})
+		#print(self.all.CC_ID)
+		#print(add.CC_ID)
+		self.all['CC_ID'] = self.all['CC_ID'].astype(str).astype(int)
 		self.all = pd.merge( self.all, add, how='left', on ="CC_ID")
 
 	def fillInFailed(self):

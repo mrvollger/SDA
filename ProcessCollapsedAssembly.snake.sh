@@ -25,18 +25,27 @@ defaultCores=1
 
 #
 # run snakemake
+# the first set of line runs it on a sub grid cluster
 #
-snakemake -p \
-	-s $snakefile \
-	--drmaa " -P eichlerlab \
-		-q eichler-short.q \
-		-l h_rt=24:00:00  \
-		-l mfree=$ram \
-		-V -cwd -e $E -o $O \
-		{params.cluster} \
-		-S /bin/bash" \
-	--jobs $jobNum \
-	--latency-wait $waitTime \
-	$1 $2 # just a way to pass aditional arguments to snakemake, like --unlock 
+if [ "sungird" == "yes" ]; then 
+	snakemake -p \
+		-s $snakefile \
+		--drmaa " -P eichlerlab \
+			-q eichler-short.q \
+			-l h_rt=24:00:00  \
+			-l mfree=$ram \
+			-V -cwd -e $E -o $O \
+			{params.cluster} \
+			-S /bin/bash" \
+		--jobs $jobNum \
+		--latency-wait $waitTime \
+		$1 $2 $3  # just a way to pass aditional arguments to snakemake, like --unlock 
+else
+	snakemake -p \
+		-s $snakefile \
+		--jobs $(nproc) \
+		 $1 $2 $3
+fi 
+
 
 
