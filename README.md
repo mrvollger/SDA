@@ -3,11 +3,11 @@
 
 # Download: #
 ```
-git clone --recurse-submodules -j8 git://github.com/mvollger/SDA.git
+git clone --recurse-submodules git://github.com/mvollger/SDA.git
 ```
 
 # Install: #
-The requirements for SDA are taken care of my two conda environments (sda-python-2 and sda-python-3). In order to get this running you must already have anaconda 3 installed somewhere on your system and you must be able to create enviorments. 
+The requirements for SDA are taken care of my two conda environments (sda-python-2 and sda-python-3). In order to get this running you must already have anaconda 3 installed somewhere on your system and you must be able to create environments. 
 
 Once that is done modify `env_conda.cfg` so that it adds conda to your path. The `CONDA_PATH` variable must be set so that it points at you conda installation. Here is an example of what your `env_conda.cfg` might look like.
 ```
@@ -18,7 +18,7 @@ export PATH=$CONDA_PATH/bin:$PATH
 
 ```
 
-Once the anaconda environment is available the `Makefile` can be run with:
+Once the anaconda environment in your path and `env_conda.cfg` has been updated the `Makefile` can be run with:
 ```
 make
 ```
@@ -32,8 +32,8 @@ sda.config.json
 ```
 
 The file `sda.config.json` must have three values set:
- `MINCOV` should be set to a depth value above teh average depth of sequencing error, `MAXCOV` should be set to a value around the average read depth, and `MINTOTAL` should be set to the minimum expected coverage for a collapsed duplicaiton. 
-Below is an exmaple of what the file might look like:
+ `MINCOV` should be set to a depth value above the average depth of sequencing error, `MAXCOV` should be set to a value around the average read depth, and `MINTOTAL` should be set to the minimum expected coverage for a collapsed duplication. 
+Below is an example of what the file might look like:
 ```
 {
 	"MINCOV" : 27, # Minimum depth over a PSV for it to be considered
@@ -58,9 +58,6 @@ wtdbg.assemblies.fasta
 ```
 These are fasta files with the sequences for each paralog as determined by SDA. The prefixes say which assembler was used to generate the results, in my experience canu has worked best.
 
-For a vizualization of the correlation clustering results see this `CC/mi.cuts.gml.pdf`
-
-
-
+For a visualization of the correlation clustering results see this `CC/mi.cuts.gml.pdf`
 
 
