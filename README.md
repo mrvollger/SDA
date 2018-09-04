@@ -7,9 +7,9 @@ git clone --recurse-submodules git://github.com/mvollger/SDA.git
 ```
 
 # Install: #
-The requirements for SDA are taken care of my two conda environments (sda-python-2 and sda-python-3). In order to get this running you must already have anaconda 3 installed somewhere on your system and you must be able to create environments. 
+The requirements for SDA are taken care of by two custom conda environments (sda-python-2 and sda-python-3). In order to run SDA, you must already have anaconda 3 installed on your system and you must be able to create conda environments. 
 
-Once that is done modify `env_conda.cfg` so that it adds conda to your path. The `CONDA_PATH` variable must be set so that it points at you conda installation. Here is an example of what your `env_conda.cfg` might look like.
+Once that is done, modify `env_conda.cfg` so that it adds conda to your path. The `CONDA_PATH` variable must be set so that it points at you conda installation. Here is an example of what your `env_conda.cfg` might look like.
 ```
 #!/bin/bash
 
@@ -18,7 +18,7 @@ export PATH=$CONDA_PATH/bin:$PATH
 
 ```
 
-Once the anaconda environment is in your path and `env_conda.cfg` has been updated the `Makefile` can be run with:
+Once `env_conda.cfg` has been updated and the anaconda environment is in your path (e.g. `source env_conda.cfg`), the `Makefile` can be run with:
 ```
 make
 ```
@@ -28,11 +28,10 @@ make
 
 # Run: #
 
-## Required files: ##
-SDA requires some files to be run.
+## Required input files: ## 
 ```
-ref.fasa # collapsed representation of a segmental duplication
-reads.orig.bam # reads aligning to the collapsed duplication. Note if you want error correction by quiver to happen these reads must be aligned using PacBio’s version of Blasr to preserve quality values. 
+ref.fasta # collapsed representation of a segmental duplication
+reads.orig.bam # reads aligning to the collapsed duplication. Note: if you want quiver/arrow error correction to happen these reads must be aligned using PacBio’s version of Blasr to preserve quality values. 
 sda.config.json
 ```
 The file `sda.config.json` must have three values set:
@@ -50,9 +49,9 @@ Below is an example of what the file might look like:
 
 ## Running: ##
 
-SDA is run by a snakemake script. While SDA should run correctly as long as the required files are properly in place you may find some knowledge of snakemake useful in running SDA.  
+SDA is run by a snakemake script. While SDA should run correctly as long as the required files are properly in place, you may find some knowledge of snakemake useful in running SDA.  
 
-If the github repo is added to your path just type `SDA` if not type `/path/to/git/repo/SDA`.
+If the github repo is added to your path just type `SDA`; if not, type `/path/to/git/repo/SDA`.
 
 
 ## Output: ##
@@ -62,11 +61,9 @@ canu.assemblies.fasta
 miniasm.assemblies.fasta
 wtdbg.assemblies.fasta
 ```
-These are fasta files with the sequences for each paralog as determined by SDA. The prefixes say which assembler was used to generate the results, in my experience canu has worked best.
+These are fasta files containing the sequences for each paralog as determined by SDA. The prefixes say which assembler was used to generate the results - in my experience canu has worked best.
 
-For a visualization of the correlation clustering results see this `CC/mi.cuts.gml.pdf`
+For a visualization of the correlation clustering results see `CC/mi.cuts.gml.pdf`
 
 ## Test case: ##
 There is a test case created by the make file in `TestCases/SDAtest`. Please test SDA on this before testing your own data (Note quiver will not run on this test case). 
-
-
