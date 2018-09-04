@@ -47,7 +47,7 @@ Below is an example of what the file might look like:
 ```
 If you want to run with oxford nanopore technolgies (ONT) data you should add the following to `sda.config.json` above the `MINCOV` line: 
 ```
-“ont” : “True”,
+"ont" : "True",
 ```
 
 
@@ -116,6 +116,6 @@ This process only has one required input and that is a config file called `denov
     	"bax_per_job" : 10  # the number of read files to submit to blasr at once. I recommend less than 15. 
 }
 ```
-Once again `”ont” : “True”` can be added for use with ONT data. 
+Once again `"ont" : "True"` can be added for use with ONT data. 
 
 
