@@ -22,6 +22,7 @@ Once `env_conda.cfg` has been updated and the anaconda environment is in your pa
 ```
 make
 ```
+We suggest using `gcc=7.x` because that is what we have used we installing SDA. 
 
 
 
@@ -67,3 +68,20 @@ For a visualization of the correlation clustering results see `CC/mi.cuts.gml.pd
 
 ## Test case: ##
 There is a test case created by the make file in `TestCases/SDAtest`. Please test SDA on this before testing your own data (Note quiver will not run on this test case). 
+
+
+
+## Common Java Error: ##
+Some users will find that while creating the file `CC/mi.cuts.gml.pdf` they get the following error:
+```
+undefined symbol: FT_Done_MM_Var 
+```
+If you get this error we recommend re-installing the `java-jdk` as this has resolved the issue for others. 
+```
+source activate sda-python-3 
+conda uninstall java-jdk
+conda install java-jdk
+```
+
+
+
