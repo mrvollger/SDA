@@ -51,7 +51,7 @@ If you want to run with oxford nanopore technolgies (ONT) data you should add th
 ```
 
 
-### Optional input  ### 
+### Optional input: ### 
 If you are running SDA on a human genome you can provide additional files that will be used to compare your SDA results against. 
 ```
 ref.fasta.bed  # bed file containing the locations of the duplications in GRCh38.
