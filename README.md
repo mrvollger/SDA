@@ -66,4 +66,7 @@ These are fasta files with the sequences for each paralog as determined by SDA. 
 
 For a visualization of the correlation clustering results see this `CC/mi.cuts.gml.pdf`
 
+## Test case: ##
+There is a test case created by the make file in `TestCases/SDAtest`. Please test SDA on this before testing your own data (Note quiver will not run on this test case). 
+
 
