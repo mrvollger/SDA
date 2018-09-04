@@ -111,7 +111,7 @@ This process only has one required input and that is a config file called `denov
 	"asm" : "NA19240.fasta", # The denovo assembly to examine.
 	"reads" : "reads.fofn", # A file of file names (FOFN) containing all the reads used in denovo assembly.
 	"reference " :  "~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta", # a path to a local download of UCSC’s hg38. 
-            "genes" : "/net/eichler/vol2/home/mvollger/assemblies/hg38/hg38.gene.locations.bed",
+        "genes" : "/net/eichler/vol2/home/mvollger/assemblies/hg38/hg38.gene.locations.bed",
 	"project" : "NA19240", # A project identifier, can be anything (no spaces). 
     	"bax_per_job" : 10  # the number of read files to submit to blasr at once. I recommend less than 15. 
 }
