@@ -71,7 +71,7 @@ There is a test case created by the make file in `TestCases/SDAtest`. Please tes
 
 
 
-## Common Java Error: ##
+### Common Java Error: ###
 Some users will find that while creating the file `CC/mi.cuts.gml.pdf` they get the following error:
 ```
 undefined symbol: FT_Done_MM_Var 
