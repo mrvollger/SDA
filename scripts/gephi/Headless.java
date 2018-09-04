@@ -123,7 +123,7 @@ public class Headless
 		layout.setGraphModel(graphModel);
         layout.resetPropertiesValues();
         layout.initAlgo();
-        System.out.println("Running Layout Algorithum: Force Atlas2");
+        System.out.println("Running Layout Algorithm: Force Atlas2");
         for (int i = 0; i < its && layout.canAlgo(); i++) {
             layout.goAlgo();
         }
@@ -134,12 +134,12 @@ public class Headless
 		layout2.setGraphModel(graphModel);
         layout2.resetPropertiesValues();
         layout2.initAlgo();
-        System.out.println("Running Layout Algorithum: FruchtermanReingold");
+        System.out.println("Running Layout Algorithm: FruchtermanReingold");
         for (int i = 0; i < its*100 && layout2.canAlgo(); i++) {
             layout2.goAlgo();
         }
 		layout2.endAlgo();
-		System.out.println("Done Running Layout Algorithum");
+		System.out.println("Done Running Layout Algorithm");
  
 		
         // add CCID column
