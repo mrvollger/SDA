@@ -22,7 +22,7 @@ Once `env_conda.cfg` has been updated and the anaconda environment is in your pa
 ```
 make
 ```
-We suggest using `gcc=7.x` because that is what we have used we installing SDA. 
+We suggest using `gcc=7.x` because that is what we have used when installing SDA. 
 
 
 
