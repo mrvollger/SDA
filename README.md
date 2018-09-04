@@ -35,14 +35,15 @@ ref.fasta # collapsed representation of a segmental duplication
 reads.orig.bam # reads aligning to the collapsed duplication. Note: if you want quiver/arrow error correction to happen these reads must be aligned using PacBio’s version of Blasr to preserve quality values. 
 sda.config.json
 ```
-The file `sda.config.json` must have three values set:
- `MINCOV` should be set to a depth value above the average depth of sequencing error, `MAXCOV` should be set to a value around the average read depth, and `MINTOTAL` should be set to the minimum expected coverage for a collapsed duplication. 
+The file `sda.config.json` must have four values set:
+`MINCOV` should be set to a depth value above the average depth of sequencing error, `MAXCOV` should be set to a value around the average read depth, `MINTOTAL` should be set to the minimum expected coverage for a collapsed duplication, and `project` should just be a string identifier for your project. 
 Below is an example of what the file might look like:
 ```
 {
 	"MINCOV" : 27, # Minimum depth over a PSV for it to be considered
 	"MAXCOV" : 54, # Maximum depth over a PSV for it to be considered
 	"MINTOTAL" : 83, # Minimum total depth at a PSV position for it to be considered. 
+	"project": "CHM1_V4" # a name for your project (no spaces).
 }
 ```
 If you want to run with oxford nanopore technolgies (ONT) data you should add the following to `sda.config.json` above the `MINCOV` line: 
