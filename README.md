@@ -45,7 +45,19 @@ Below is an example of what the file might look like:
 	"MINTOTAL" : 83, # Minimum total depth at a PSV position for it to be considered. 
 }
 ```
+If you want to run with oxford nanopore technolgies (ONT) data you should add the following to `sda.config.json` above the `MINCOV` line: 
+```
+“ont” : “True”,
+```
 
+
+### Optional input  ### 
+If you are running SDA on a human genome you can provide additional files that will be used to compare your SDA results against. 
+```
+ref.fasta.bed  # bed file containing the locations of the duplications in GRCh38.
+duplications.fasta # fasta file with the duplicated sequence from GRCh38. The header of each paralog must be in the format  “>{chromosome}:{start position}-{end position}”
+```
+If you include these files many additional outfiles are created. For example, `canu.summary.txt` which contains a summary of where the SDA contigs aligned to the reference and how well the match the reference. You can run the test case with and without `duplications.fasta` to see the difference. 
 
 
 ## Running: ##
@@ -83,5 +95,27 @@ conda uninstall java-jdk
 conda install java-jdk
 ```
 
+
+
+
+# Identifying Collapsed Duplications #
+
+I have written a snakemake (`ProcessCollapsedAssembly.py`) for identifying collapsed duplications within a de novo assembly. It requires the user to have a working install of `RepeatMasker`, but otherwise the dependencies are taken care of by `sda-python-3`. 
+
+This process can be started by executing using this script `ProcessCollapsedAssembly.snake.sh` once the required input is in place. 
+
+## Required input: ##
+This process only has one required input and that is a config file called `denovo.setup.config.json` which must be placed in a directory called config (`config/denovo.setup.config.json`).  An example config file is shown below:
+```
+{	
+	"asm" : "NA19240.fasta", # The denovo assembly to examine.
+	"reads" : "reads.fofn", # A file of file names (FOFN) containing all the reads used in denovo assembly.
+	"reference " :  "~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta", # a path to a local download of UCSC’s hg38. 
+            "genes" : "/net/eichler/vol2/home/mvollger/assemblies/hg38/hg38.gene.locations.bed",
+	"project" : "NA19240", # A project identifier, can be anything (no spaces). 
+    	"bax_per_job" : 10  # the number of read files to submit to blasr at once. I recommend less than 15. 
+}
+```
+Once again `”ont” : “True”` can be added for use with ONT data. 
 
 
