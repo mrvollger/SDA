@@ -105,7 +105,7 @@ I have written a snakemake (`ProcessCollapsedAssembly.py`) for identifying colla
 This process can be started by executing using this script `ProcessCollapsedAssembly.snake.sh` once the required input is in place. 
 
 ## Required input: ##
-This process only has one required input and that is a config file called `denovo.setup.config.json` which must be placed in a directory called config (`config/denovo.setup.config.json`).  An example config file is shown below:
+This process only has one required input and that is a config file called `denovo.setup.config.json` which must be placed in a directory called config (`config/denovo.setup.config.json`).  An example of the `denovo.setup.config.json` file is shown below:
 ```
 {	
 	"asm" : "NA19240.fasta", # The denovo assembly to examine.
