@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import argparse
-
 parser = argparse.ArgumentParser(description="")
 parser.add_argument("bam", help='regex of files to use, must be put in quotes, e.g. "test.*.sam" ' )
 args = parser.parse_args()

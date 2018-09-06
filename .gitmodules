@@ -1,6 +1,3 @@
 [submodule "externalRepos/pbgreedyphase"]
 	path = externalRepos/pbgreedyphase
         url = git://github.com/mchaisso/pbgreedyphase.git
-[submodule "externalRepos/whatshap"]
-	path = externalRepos/whatshap
-	url = https://bitbucket.org/whatshap/whatshap
