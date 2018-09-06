@@ -123,6 +123,14 @@ rule whatsHap:
         """
 #-----------------------------------------------------------------------------------------------------#
 
+rule duplication_index:
+	input: 
+		expand("group.{n}/H2.WH.bam", n=IDS),
+	output:
+		dupindex="read.duplication.index",
+	shell:"""
+{base}/ReadDuplicationIndex.py {input} --out {output.dupindex}
+"""
 
 
 #
@@ -791,6 +799,7 @@ rule final:
 		done=expand("real/{ASM}.done.txt", ASM=assemblers),
 		asms=expand("group.{ID}/{ASM}.assembly/asm.contigs.fasta", ID=IDS, ASM=assemblers),
 		truth="truth/README.txt",
+		dupindex="read.duplication.index",
 	output: 'final'
 	shell:"""
 touch {output}
