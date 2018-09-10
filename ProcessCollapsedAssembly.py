@@ -19,18 +19,6 @@ shell.prefix("source %s/env_python3.cfg; " % SNAKEMAKE_DIR)
 python3 = snake_dir + "env_python3.cfg"
 python2 = snake_dir + "old.env_python2.cfg"
 
-#
-# A little complicated to find the temp dir
-#
-SSD_TMP_DIR = "/data/scratch/ssd"
-if "TMPDIR" in os.environ:
-    TMPDIR = os.environ['TMPDIR']
-elif "TMPDIR" in config:
-    TMPDIR = config['TMPDIR']
-elif os.path.exists(SSD_TMP_DIR):
-    TMPDIR = SSD_TMP_DIR
-else:
-    TMPDIR = tempfile.gettempdir()
 
 configFileName = "config/denovo.setup.config.json"
 configfile: configFileName
@@ -41,8 +29,6 @@ print("The reference is this file: {}".format(reference))
 
 if("job_fmt" not in config): 
 	job_fmt=" -pe serial {} -l mfree={}G -l h_rt={}"
-
-
 
 
 localrules: all, 
@@ -315,12 +301,12 @@ rule SplitFOFN:
 		fofnSplit=dynamic("fofns/reads.{index}.fofn")
 	params:
 		cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
-		baxPerJob=config["bax_per_job"]
+		ReadFilesPerJob=config["read_files_per_job"]
 	shell:
 		"""
 		fofn=$(readlink -f {input.fofn})
 		cd fofns 
-		split --numeric --lines {params.baxPerJob} $fofn reads.
+		split --numeric --lines {params.ReadFilesPerJob} $fofn reads.
 		for f in $(ls reads.*); do
 			mv $f $f.fofn 
 		done 
@@ -1250,7 +1236,6 @@ if("illumina" in config):
 			read2=expand("illumina/reads/{index}_2.fastq.gz", index = readidxs),
 		params:
 			cluster=" -pe serial 1 -l mfree=1G -l h_rt=1:00:00",
-			baxPerJob=config["bax_per_job"]
 		run:
 			lines = open(input["fofn"]).readlines()
 			for line in  lines:

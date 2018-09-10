@@ -1,0 +1,8 @@
+{
+	"asm" : "path to your de novo assembly",
+	"reads" : "path to a file of file (fofn) names pointing to all the seqeunceing reads",
+	"reference": "path to the human reference (GRCh38)",
+	"project": "a project name, no spaces allowed",
+    "genes": "path to a bed file with genes in the human reference (GRCh38)",
+	"read_files_per_job" : 15
+}
