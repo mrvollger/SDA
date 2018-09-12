@@ -1328,7 +1328,7 @@ if("illumina" in config):
 			
 			allreads = None
 			for idx, bam in enumerate(sorted(glob.glob("illumina/alignments/align.*.bam"))):
-				samfile = pysam.AlignmentFile(bam, "rb")
+				samfile = pysam.AlignmentFile(bam, "rb", check_sq=False)
 				if(idx == 0 ):
 					allreads = pysam.AlignmentFile(output["bams"], "wb", template=samfile)
 

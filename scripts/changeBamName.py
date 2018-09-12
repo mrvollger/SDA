@@ -14,7 +14,7 @@ import re
 
 "@RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO       DS:READTYPE=SUBREAD;CHANGELISTID=2.3.0.0.140018;BINDINGKIT=100356300;SEQUENCINGKIT=100356200;FRAMERATEHZ=100;BASECALLERVERSION=2.3;InsertionQV=iq;DeletionQV=dq;SubstitutionQV=sq;MergeQV=mq;SubstitutionTag=st;DeletionTag=dt;Ipd=ip"
 
-bam1 = AlignmentFile(args.infile)
+bam1 = AlignmentFile(args.infile, check_sq=False)
 header = bam1.header.to_dict()
 print(header)
 
