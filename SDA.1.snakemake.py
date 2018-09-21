@@ -52,14 +52,13 @@ if("minimap" in config):
 	if(config["minimap"].lower() in ["t", "true"] ):
 		MM2=True
 
-bandwidth = "5000"
-
+bandwidth = 50000
 # set a minimum alignment lenght 
 # the minmum alignment length is set to be larger than a full length LINE element ~6 kbp. 
-minaln = "7000"
+minaln = 7000
 if("minaln" in config):
-	minaln = config["minaln"]
-
+	minaln = int(config["minaln"])
+minscore = int(minaln*0.5) # minimap does not have a minaln setting so I approximatie by setting a minium dynamic progrtaming score
 
 if(os.path.exists("reads.orig.bam") and ISPB and not MM2):
 
@@ -120,7 +119,7 @@ samtools fastq {input.reads} | \
 		-B 3 \
 		-O 9 \
 		-E 3 \
-		-s {minaln} \
+		-s {minscore} \
 		-r {bandwidth} \
 		-R '@RG\\tID:BLASR\\tSM:NO_CHIP_ID\\tPL:PACBIO' \
 		ref.fasta /dev/stdin | \
@@ -421,7 +420,6 @@ rule correlationClustering:
 			--niter 10000 --swap 1000000 --factor 1 \
 			--plotRepulsion {showIters} \
 			--cuts {output.cuts} --sites {output.sites} --out {output.out}
-			#--seed \
 	
 		# it running all iteraitons convert them into a booklet
 		{convert}
