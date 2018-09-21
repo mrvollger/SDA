@@ -19,6 +19,7 @@ ap.add_argument("--cuts", help="Write cuts to this file.", default=None)
 ap.add_argument("--scores", help="Write the different CC scores to an output file", default="CC.scores.txt")
 ap.add_argument("--starts", help="Number of times to rerun CC looking for a better score", type=int, default=15)
 ap.add_argument("--minlen", help="minimum length of a psv cluster", type=int, default=9000)
+ap.add_argument("--minCutSize", help="minimum number of PSVs in a cluster", type=int, default=5)
 ap.add_argument("--sites", help="Write sites of cuts to this file.", default=None)
 ap.add_argument("--seed", help="Do not seed the random number generator with a fixed value. This will cause runs on the same dataset to have different results.", default=True, action='store_false')
 # added by mrv 2/21/18
@@ -578,7 +579,7 @@ def FilterConflictingNodes(gAdjList, repulsion, cuts, nodes, cutoff):
 
 # this function removes small clusters (less than 3), or cuts that are really samll in length (9kbp)
 # this is because it could be a LINE element, and it is also the minimum default collapse size
-def RemoveSmallCuts(cuts, minCutSize=3):
+def RemoveSmallCuts(cuts, minCutSize=args.minCutSize):
 	i = 0
 	while i < len(cuts):
 		sites = sorted( [int(g.node[n]['pos']) for n in cuts[i]] )
