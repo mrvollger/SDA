@@ -30,7 +30,6 @@ dependencies:
   - pysam=0.14.1=py36hae42fb6_1
   - pysftp=0.2.9=py36_0
   - pyvcf=0.6.8=py36_0
-  - repeatmasker=4.0.7=pl5.22.0_11
   - rmblast=2.2.28=h21aa3a5_4
   - rsa=3.1.4=py36_0
   - samtools=1.9=h46bd0b3_0
