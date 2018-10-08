@@ -42,10 +42,12 @@ rule all:
 #
 ISPB=True
 ISONT=False
+maptype= " map-pb "
 if("ont" in config):
 	if(config["ont"].lower() in ["t", "true"] ):
 		ISPB=False
 		ISONT=True
+		maptype= " map-ont "
 
 MM2 = False
 if("minimap" in config):
@@ -98,7 +100,7 @@ fi
 
 """
 
-elif(os.path.exists("reads.orig.bam") and (not ISPB or MM2)):
+elif(os.path.exists("reads.orig.bam") and (ISONT or MM2)):
 	rule realign_reads_minimap:
 		input:
 			reads='reads.orig.bam', 
@@ -108,11 +110,12 @@ elif(os.path.exists("reads.orig.bam") and (not ISPB or MM2)):
 		threads: 8
 		shell:"""
 source {python3}
-# @RG     ID:c96857fdd5   PU:pileup_reads SM:NO_CHIP_ID   PL:PACBIO 
+
 samtools fastq {input.reads} | \
 	minimap2 \
-		-ax map-ont \
-		--cs \
+		-ax {maptype} \
+		--eqx \
+		-L \
 		-t {threads} \
 		-k 11 \
 		-A 3 \
@@ -326,7 +329,7 @@ if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta
 			source {python3}
 				samtools fastq {input.reads} | \
 					minimap2 \
-						-ax map-pb \
+						-ax {maptype} \
 						--eqx \
 						-k 11 \
 						-t {threads} \

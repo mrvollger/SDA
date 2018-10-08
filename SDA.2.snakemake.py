@@ -171,7 +171,7 @@ if(ISONT):
 # run the assembly
 rule runAssembly:
     input: 'group.{n}/WH.reads.fasta'
-    output: 'group.{n}/{ASM}.assembly/asm.contigs.fasta'
+    output: temp('group.{n}/{ASM}.assembly/asm.contigs.fasta'),
     threads: 4
 	shell:'''
 # asm location
@@ -247,18 +247,22 @@ rule assemblyReport:
     input:  
         oasm= 'group.{n}/{ASM}.assembly/asm.contigs.fasta',
     output: 
-        asm=  'group.{n}/{ASM}.assembly.fasta',
+        asm=  temp('group.{n}/{ASM}.assembly.fasta'),
+        fai=  temp('group.{n}/{ASM}.assembly.fasta.fai'),
         report='group.{n}/{ASM}.report.txt'
     shell:
         """
         if [ -s {input.oasm} ]
         then
             cp {input.oasm} {output.asm}
-	        echo "Number of reads " > {output.report}
+	        samtools faidx {output.asm}
+			echo "Number of reads " > {output.report}
 	        echo "Assembly number of contigs" >> {output.report}
+
         else
             touch {output.asm}
             touch {output.report}
+            touch {output.fai}
         fi
         """ 
 
@@ -294,6 +298,7 @@ else:
 					samtools sort -m 4G -T tmp -o {output.asmbam}
 				
 				samtools index {output.asmbam}
+				pbindex {output.asmbam}
 			
 			fi
 			"""
@@ -301,7 +306,8 @@ else:
 	rule quiverFromBam:
 		input:
 			asmbam= 'group.{n}/{ASM}.assembly.bam',
-			asm= 'group.{n}/{ASM}.assembly.fasta'
+			asm= 'group.{n}/{ASM}.assembly.fasta',
+			fai=  'group.{n}/{ASM}.assembly.fasta.fai',
 		output:
 			quiver= 'group.{n}/{ASM}.assembly.consensus.fasta',
 		threads: 4
@@ -341,7 +347,7 @@ rule combineAsm:
 	input:
 		quiver= expand('group.{ID}/{{ASM}}.assembly.consensus.fasta', ID=IDS),
 	output: 
-		asm='{ASM}.assemblies.pre.pilon.fasta',
+		asm=temp('{ASM}.assemblies.pre.pilon.fasta'),
 	run:
 		collapse = os.path.basename(os.getcwd())
 		rtn = ""
@@ -637,8 +643,12 @@ samtools depth -aa {output.bam} > {output.depth}
 			table="{ASM}.sda.table.tsv",
 		shell:
 			"""
-			{base}/summary.py --assembler {wildcards.ASM} --summary {output.summary}
-			{base}/overlapOfReadsCheck.py "group.*/H2.WH.bam" > read_collision.txt
+			if [ ! -s {input.combine} ]; then
+				touch {output}
+			else 
+				{base}/summary.py --assembler {wildcards.ASM} --summary {output.summary}
+				{base}/overlapOfReadsCheck.py "group.*/H2.WH.bam" > read_collision.txt
+			fi
 			"""
 
 		
@@ -657,9 +667,13 @@ samtools depth -aa {output.bam} > {output.depth}
 			project=config["project"],
 		shell:
 			"""
-			{base}/bedForABP.py --stats {input.table} \
+			if [ ! -s {input.summary} ]; then
+				touch {output}
+			else
+				{base}/bedForABP.py --stats {input.table} \
 					--summary {input.summary} --track {params.project} \
 					--out {output.asmbed}
+			fi
 			"""
 
 else:
@@ -800,7 +814,7 @@ rule final:
 		asms=expand("group.{ID}/{ASM}.assembly/asm.contigs.fasta", ID=IDS, ASM=assemblers),
 		truth="truth/README.txt",
 		dupindex="read.duplication.index",
-	output: 'final'
+	output: temp('final'),
 	shell:"""
 touch {output}
 # remove extra files from assemblies, this speeds up the dag building for snakemake by a lot
