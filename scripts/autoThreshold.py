@@ -10,6 +10,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--nucfreq", help="assembly.consensus.nucfreq", default="assembly.consensus.nucfreq")
 parser.add_argument("--plot", help="name of output plot", default="Coverage.png")
+parser.add_argument("--psvsites", help="mi.gml.sites", default=None)
 parser.add_argument("--automin", help="autoMinCoverage", default="autoMinCoverage")
 parser.add_argument("--automax", help="autoMaxCoverage", default="autoMaxCoverage")
 args = parser.parse_args()
@@ -50,6 +51,25 @@ prime, = plt.plot(truepos, first, 'o', color="black", markeredgewidth=0.0, marke
 #plt.gca().set_ylim(top=300)
 sec, = plt.plot(truepos, second,'o', color="red",   markeredgewidth=0.0, markersize=2, label = "second most frequent base pair")
 #tri, = plt.plot(truepos, third,'o', color="green",   markeredgewidth=0.0, markersize=1, label = "forth most frequent base pair")
+
+plotnum = 2
+if(args.psvsites is not None):
+		cuts = {}
+		for idx, line in enumerate(open(args.psvsites).readlines()):
+			try:	
+				vals = line.strip().split()
+				cuts[idx] = list(map(int, vals))
+				#make plot
+				plotnum += 1
+				x = cuts[idx]
+				idxs = (np.isin(truepos, x))
+				y = second[idxs]
+				plt.plot(x,y, label="group:{}".format(idx), alpha = 0.5)
+			except Exception as e:
+				print("Skipping because error: {}".format(e), file=sys.stderr)
+				continue
+
+
 ax.set_xlabel('Collapse Position (bp)')
 ax.set_ylabel('Sequence Read Depth')
 
@@ -65,10 +85,10 @@ ax.spines["top"].set_visible(False)
 ax.yaxis.set_ticks_position('left')
 ax.xaxis.set_ticks_position('bottom')
 
-lgnd = plt.legend(loc="upper right")
-for handle in lgnd.legendHandles:
-	handle._sizes = ([300.0])
 
+lgnd = plt.legend(loc="upper right", ncol = int(np.ceil(plotnum/2.0)), fontsize = 12)
+for handle in lgnd.legendHandles:
+	handle._sizes = ([50.0])
 
 plt.savefig(args.plot, dip=900)
 
