@@ -140,7 +140,7 @@ if(args.sam is not None):
 	# a map from reference to names of queriers that mathc  
 	ref={}
 	reads={}
-	for read in samfile.fetch():
+	for read in samfile.fetch(until_eof=True):
 		if(read.is_unmapped):
 			continue 
 		# add reads to a dictionary by query
