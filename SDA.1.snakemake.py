@@ -57,10 +57,10 @@ if("minimap" in config):
 bandwidth = 50000
 # set a minimum alignment lenght 
 # the minmum alignment length is set to be larger than a full length LINE element ~6 kbp. 
-minaln = 7000
+minaln = 3000
 if("minaln" in config):
 	minaln = int(config["minaln"])
-minscore = int(minaln*0.5) # minimap does not have a minaln setting so I approximatie by setting a minium dynamic progrtaming score
+minscore = int(minaln) # minimap does not have a minaln setting so I approximatie by setting a minium dynamic progrtaming score
 
 if(os.path.exists("reads.orig.bam") and ISPB and not MM2):
 
@@ -357,6 +357,7 @@ rule addFakeCatagoryToMatrix:
 # This finds PSVs that are connected by a sufficient number of
 # sequences, and creates the PSV graph. This will have merged components.
 #
+MINLRT = 1.5
 rule createPSVgraph:
 	input:
 		matrix="snvs/assembly.consensus.fragments.snv.mat.categorized",
@@ -370,7 +371,7 @@ rule createPSVgraph:
 		"""
 		{scriptsDir}/PairedSNVs.py {input.matrix} --minCov {MINCOV} --maxCov {MAXCOV} \
 				--mi {output.mi} --graph {output.graph} --adj {output.adj} \
-				--minNShared 5 --minLRT 1.5 --vcf {input.vcf}
+				--minNShared 5 --minLRT {MINLRT} --vcf {input.vcf}
 		"""
 
 
@@ -385,7 +386,7 @@ rule GenerateRepulsion:
 		rep = "CC/mi.repulsion",
 	shell:
 		"""
-		{base}/GenerateRepulsion.py --shared 5 --lrt 1.5 --max 3 --gml {input.graph} --mi {input.mi} --out {output.rep}
+		{base}/GenerateRepulsion.py --shared 5 --lrt {MINLRT} --max 3 --gml {input.graph} --mi {input.mi} --out {output.rep}
 		"""
 
 runIters = True
