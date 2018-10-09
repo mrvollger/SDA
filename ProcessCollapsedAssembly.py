@@ -698,7 +698,7 @@ rule FilterCollapses:
 	run:
 		collapses = pd.read_csv(input["unf"], sep = "\t", header=None, 
 				names=['contig', 'start', 'end', "notR", 'coverage', "RC", "length", "contigl", "distToEnd"])
-		minsize = 25000
+		minsize = 15000
 		maxRC = 75
 		
 		# apply filter
