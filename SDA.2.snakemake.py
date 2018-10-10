@@ -13,6 +13,7 @@ shell.prefix("source {}/env_python3.cfg; ".format(snake_dir))
 # script locations and configurations 
 #
 base = snake_dir + "scripts/"
+overlap = snake_dir + "OverlapScripts/"
 python3 = snake_dir + "env_python3.cfg"
 python2 = snake_dir + "env_python2.cfg"
 
@@ -111,8 +112,6 @@ rule whatsHap:
         hapbai= 'reads.sample.bam.bai',
         hapvcf= 'group.{n}/phased.{n}.vcf'
     output: 
-        #hap= 'group.{n}/haplotagged.bam',
-        #hapH1= 'group.{n}/H1.WH.sam',
         hapH2= 'group.{n}/H2.WH.bam'
     shell:
         """
@@ -535,43 +534,34 @@ if(os.path.exists("duplications.fasta")):
 			ref="ref.fasta",
 			dup="duplications.fasta",
 		output:
-			refsam="asms/{ASM}.sam",
-			dupsam="asms/{ASM}.dup.sam",
+			refsam="asms/{ASM}.bam",
+			dupsam="asms/{ASM}.dup.bam",
 		threads: 8
 		shell:"""
-#b --nproc {threads} --sam --out - \
-#	--bestn 1 --minMatch 11 --maxMatch 15 --nCandidates 50 \
-#	{input.asm} {input.ref} | \
-#	samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.refsam}
-
 minimap2 \
 	{input.ref} {input.asm} \
 	-k 11 -a --eqx -t {threads} \
 	-r {bandwidth} \
 	-x asm20 | \
-	samtools view -h -F 2308 - | \
+	samtools view -bS -F 2308 - | \
 	samtools sort -m 4G -T tmp -o {output.refsam}
-
-
-#b --nproc {threads} --sam --out - \
-#	--bestn 1 --minMatch 11 --maxMatch 15 --nCandidates 50 \
-#	{input.asm} {input.dup} | \
-#	samtools view -h -F 4 - | samtools sort -m 4G -T tmp -o {output.dupsam}
+samtools index {output.refsam}
 
 minimap2 \
 	{input.dup} {input.asm} \
 	-k 11 -a --eqx -t {threads} \
 	-r {bandwidth} \
 	-x asm20 | \
-	samtools view -h -F 2308 - | \
+	samtools view -bS -F 2308 - | \
 	samtools sort -m 4G -T tmp -o {output.dupsam}
+samtools index {output.dupsam}
 """
 
 
 	rule getTablesFromSam:
 		input:
-			refsam="asms/{ASM}.sam",
-			dupsam="asms/{ASM}.dup.sam",
+			refsam="asms/{ASM}.bam",
+			dupsam="asms/{ASM}.dup.bam",
 		output:
 			dup="asms/{ASM}.dup.tbl",
 			ref="asms/{ASM}.tbl",
@@ -616,12 +606,12 @@ samtools depth -aa {output.bam} > {output.depth}
 	rule plot_seqs_on_dup:
 		input:
 			depth="asms/dup_depth.tsv",
-			sam="asms/{ASM}.dup.sam"
+			bam="asms/{ASM}.dup.bam"
 		output:
 			plot = "{ASM}.SeqsOnDup.png",
 		shell:
 			"""
-			{base}/plotDepth.py {input.depth} {output} --sam {input.sam}
+			{base}/plotDepth.py {input.depth} {output} --sam {input.bam}
 			"""
 
 
@@ -741,77 +731,24 @@ rule plotCovOnAsm:
 		{base}/plotDepth.py {input.cov} {output.plot}
 		"""
 
-
-
-
-#-----------------------------------------------------------------------------------------------------#
-if(os.path.exists("real.fasta")):
-	# create a map of the reads onto the real end results 
-	rule coverageOnReal:
-		input:
-			ref = "real.fasta",
-			reads = "reads.fofn",
-		output:
-			cov="real/real_depth.tsv",
-			bam="real/reads_on_real.bam",
-		threads:16
-		shell:
-			"""
-			blasr {input.reads} {input.ref} --bestn 1 --clipping subread --nproc {threads} --sam --out - | \
-					samtools view -bS -F 4 - | \
-					samtools sort -m 4G -o {output.bam} - 
-			samtools index {output.bam}
-			samtools depth -aa {output.bam} > {output.cov}
-			"""
-	rule map_asms_to_real:
-		input:
-			asm="{ASM}.assemblies.fasta",
-			ref="real.fasta"
-		output:
-			m5="real/{ASM}.real.m5",
-			sam="real/{ASM}.real.sam",
-		shell:
-			"""
-			blasr -m 5 --bestn 1 --out {output.m5} {input.asm} {input.ref}
-			blasr -m 5 --bestn 1 --sam --clipping subread --out {output.sam} {input.asm} {input.ref}
-			"""
-
-
-	rule plotCovOnReal:
-		input:
-			cov="real/real_depth.tsv",
-			sam="real/real.sam",
-		output:
-			plot="real/SeqsOnReal.png",
-			done="real/done.txt",
-		shell:
-			"""
-			{utils}/plotDepth.py {input.cov} {output.plot} --sam {input.sam}
-			touch {output.done}
-			"""
-
-else:
-	rule FakeCovOnReal:
-		input:
-			asm="{ASM}.assemblies.fasta",
-		output:
-			done="real/{ASM}.done.txt",
-		shell:
-			"""
-			touch {output.done}
-			"""
-#-----------------------------------------------------------------------------------------------------#
-
-
-
+rule PlacePSVsOnContigs:
+	input:
+		vcfs=expand('group.{n}.vcf', n=IDS),
+		asms="{ASM}.assemblies.fasta",
+		bam="asms/{ASM}.bam",
+	output:
+		psvtbl = "{ASM}.psv.tbl",
+	shell:"""
+{overlap}/PSVLocations.py --check {input.asms} --bam {input.bam} --psvs {input.vcfs} > {output.psvtbl}
+"""
+	
 
 rule final:
 	input:
+		psvtbl = expand("{ASM}.psv.tbl", ASM=assemblers),
 		combine=expand('{ASM}.assemblies.fasta', ASM=assemblers ),
 		plot=expand("{ASM}.CoverageOnAsm.png", ASM=assemblers),
 		asmbed=expand("{ASM}.asm.bed", ASM=assemblers),
-		done=expand("real/{ASM}.done.txt", ASM=assemblers),
-		asms=expand("group.{ID}/{ASM}.assembly/asm.contigs.fasta", ID=IDS, ASM=assemblers),
 		truth="truth/README.txt",
 		dupindex="read.duplication.index",
 	output: temp('final'),
