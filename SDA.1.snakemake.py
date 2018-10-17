@@ -357,7 +357,10 @@ rule addFakeCatagoryToMatrix:
 # This finds PSVs that are connected by a sufficient number of
 # sequences, and creates the PSV graph. This will have merged components.
 #
-MINLRT = 1.5
+if("MINLRT" in config):
+	MINLRT = float(config["MINLRT"])
+else:
+	MINLRT = 1.5
 rule createPSVgraph:
 	input:
 		matrix="snvs/assembly.consensus.fragments.snv.mat.categorized",
