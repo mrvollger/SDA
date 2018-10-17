@@ -5,10 +5,11 @@ import glob
 from collections import Counter
 
 dfs = [] 
-tables = glob.glob("*/*.table.tsv")
+tables = glob.glob("*/canu.sda.table.tsv")
 for df in tables:
 	#print(df)
-	dfs.append( pd.read_csv(df, sep = "\t" ))
+	if(os.path.getsize(df) > 0):
+		dfs.append( pd.read_csv(df, sep = "\t" ))
 
 merged = pd.concat(dfs)
 print(len(tables))
