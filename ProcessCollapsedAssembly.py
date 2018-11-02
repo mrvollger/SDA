@@ -16,6 +16,7 @@ snake_dir = SNAKEMAKE_DIR + "/"
 shell.executable("/bin/bash")
 #shell.prefix("source %s/env_PSV.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
 shell.prefix("source %s/env_python3.cfg; " % SNAKEMAKE_DIR)
+RMenv = snake_dir + "env_RM.cfg"
 
 configFileName = "config/denovo.setup.config.json"
 configfile: configFileName
@@ -99,10 +100,8 @@ rule RepeateMasker:
 		cores=8,
 	threads:8
 	shell:"""
+source {RMenv}
 dir=reference/mask{wildcards.idx}
-module load perl/5.14.2
-module load RepeatMasker/3.3.0
-
 RepeatMasker \
 	-species human \
 	-e wublast \
