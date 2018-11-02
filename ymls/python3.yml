@@ -20,7 +20,7 @@ dependencies:
   - java-jdk=8.0.92=1
   - libdeflate=1.0=h470a237_0
   - miniasm=0.3_r179=ha92aebf_0
-  - minimap2=2.12=ha92aebf_0
+  - minimap2=2.13=ha92aebf_0
   - pbbam=0.18.0=h1310cd9_1
   - perl-filesys-df=0.92=1
   - perl-threaded=5.22.0=13
