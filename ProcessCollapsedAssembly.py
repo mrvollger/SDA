@@ -160,21 +160,6 @@ rule mergeTRFandRM:
 cat {input} | sort -k1,1 -k2,2n | bedtools merge -i - > {output.allR}
 """
 
-
-#
-# If a suffix arry does not yet exist for the assembly, build this.
-#
-rule MakeASMsa:
-	input:
-		asm=reference,
-	output:
-		asmsa=reference + ".sa",
-	params:
-		mem="16G",
-		cores=1,
-	shell:
-		"sawriter {input.asm}"
-
 #
 # make an index for the masked assembly  
 #
@@ -220,45 +205,48 @@ rule SplitFOFN:
 		done 
 		"""
 
-
-rule indexForMinimap:
-	input:
-		reference,
-	output:
-		mmi=reference + ".mmi"
-	params:
-		mem="16G",
-		cores=1,
-	shell:
-		"""
-		minimap2 -d {output} {input}
-		"""
-
 #
 #  For read depth, and other future steps, it is necessary to map reads back to the assembly.
 #
 MINALN=3000 # remove spurious alignments from common repeat elements 
 MINSCORE=MINALN
-rule MapReads:
-	input:
-		asm=reference,
-		asmsa=reference + ".sa",
-		mmi=reference + ".mmi",
-		fofn="fofns/reads.{index}.fofn",
-	output:
-		align="alignments/align.{index}.bam"
-	params:
-		mem="8G",
-		cores=8, 
-	threads: 8
-	run:
-		ISPB=True
-		if( "ont" in config ):
-			if(config["ont"].lower() in  ["t", "true"]):
-				ISPB=False
-		if(ISPB):
-			shell("""# bestn 2 is because a asm might be fragmented in half and we want
-# a read to be able to map to both halves.
+ISPB=True; PBMM=False
+if( "ont" in config ):
+	if(config["ont"].lower() in  ["t", "true"]):
+		ISPB=False
+if( "pbmm2" in config ):
+	if(config["pbmm2"].lower() in  ["t", "true"]):
+		PBMM = True 
+
+if(ISPB and not PBMM):
+	#
+	# If a suffix arry does not yet exist for the assembly, build this.
+	#
+	rule MakeASMsa:
+		input:
+			asm=reference,
+		output:
+			asmsa="reference/denovo.sa",
+		params:
+			mem="16G",
+			cores=1,
+		shell:
+			"sawriter {input.asm}"
+	#
+	# Map reads using blasr 
+	#
+	rule MapReads:
+		input:
+			asm=reference,
+			asmsa="reference/denovo.sa",
+			fofn="fofns/reads.{index}.fofn",
+		output:
+			align="alignments/align.{index}.bam"
+		params:
+			mem="8G",
+			cores=8, 
+		threads: 8
+		shell:"""
 blasr {input.fofn} {input.asm}  \
 	--sa {input.asmsa} \
 	--minAlnLength {MINALN} \
@@ -270,11 +258,68 @@ blasr {input.fofn} {input.asm}  \
 	--nproc {threads} \
 	--bam --out - | \
 samtools view -b -F 4 - | \
-samtools sort -@ {threads} -m 2G - -o {output.align}""")
+samtools sort -@ {threads} -m 2G - -o {output.align}
+"""
 
-		else: # the reads are ont or not foramted like pb
-			print("Running minimap2 on ONT")
-			shell(""" # running minimap2 
+elif(PBMM):
+	rule indexForPbmm2:
+		input:
+			reference,
+		output:
+			mmi="reference/denovo.mmi",
+		params:
+			mem="16G",
+			cores=1,
+		shell:"""
+pbmm2 index {input} {output}
+"""
+	
+	rule MapReads:
+		input:
+			asm=reference,
+			mmi="reference/denovo.mmi",
+			fofn="fofns/reads.{index}.fofn",
+		output:
+			align="alignments/align.{index}.bam"
+		params:
+			mem="8G",
+			cores=4, 
+		threads: 8
+		shell: """ 
+pbmm2 align \
+	-r 50000 \
+	-j {threads} \
+	{input.fofn} {input.mmi} | \
+	samtools view -bS -F 2308 - | \
+	samtools sort -@ {threads} -m 2G -o {output.align} 
+"""
+
+else: # the reads are ont or not foramted like pb
+	rule indexForMinimap:
+		input:
+			reference,
+		output:
+			mmi="reference/denovo.mmi",
+		params:
+			mem="16G",
+			cores=1,
+		shell:
+			"""
+			minimap2 -d {output} {input}
+			"""
+
+	rule MapReads:
+		input:
+			asm=reference,
+			mmi="reference/denovo.mmi",
+			fofn="fofns/reads.{index}.fofn",
+		output:
+			align="alignments/align.{index}.bam"
+		params:
+			mem="8G",
+			cores=4, 
+		threads: 8
+		shell: """ 
 minimap2 \
 	-ax map-ont \
 	-r 50000 \
@@ -283,7 +328,8 @@ minimap2 \
 	-t {threads} \
 	{input.mmi} $(cat {input.fofn}) | \
 	samtools view -bS -F 2308 - | \
-	samtools sort -@ {threads} -m 2G -o {output.align} """)
+	samtools sort -@ {threads} -m 2G -o {output.align} 
+"""
 
 
 #
@@ -297,6 +343,7 @@ rule BamIndex:
 	params:
 		mem="4G",
 		cores=2,
+	threads: 2 
 	shell:"""
 samtools index -@ {threads} {input.bam}
 """
