@@ -16,8 +16,7 @@ import re
 
 bam1 = AlignmentFile(args.infile, check_sq=False)
 header = bam1.header.to_dict()
-print(header)
-
+#print(header)
 
 
 #@RG     ID:4d11de3c     
@@ -37,12 +36,16 @@ outbam = AlignmentFile(args.outfile, "wb", header=header)# template = bam1)
 
 
 for idx,read in enumerate(bam1.fetch(until_eof=True)):
-	#readID = read1.query_name.split("/")
-	#read1.query_name = readID[0] + "/" + str(idx) 
 	read.tlen = read.reference_length
-	#read.set_tag("RG" , "4d11de3c" )
-	#read.query_name = "pileup_reads" + "/" + str(idx)
-	#read.tags += [("RG","NO_CHIP_ID")]
+	
+
+	#
+	# remove quality values because if they are low then whathap doesnt work
+	#
+	#print(read.query_alignment_qualities)
+	read.query_qualities = None
+	
+	
 	outbam.write(read)
 
 outbam.close()
