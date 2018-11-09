@@ -203,16 +203,16 @@ if [ -s {input} ]; then
 	
 	########################## WTDBG ##########################################
 	elif [ {wildcards.ASM} == 'wtdbg' ]; then 
-		wtdbg -i {input} \
-				-t {threads} \
+		wtdbg2 -f -i {input} \
 				--ctg-min-length $MINLENGTH \
+				-L 5000 \
 				-o $PREFIX/asm 
+		>&2 echo "done with assembly"
 		# run consensous
 		if [ -s $PREFIX/asm.ctg.lay ]; then
-			wtdbg-cns \
-					-t {threads} \
+			wtpoa-cns \
 					-i $PREFIX/asm.ctg.lay \
-					-o {output}
+					-fo {output}
 		else
 			touch {output}
 		fi
