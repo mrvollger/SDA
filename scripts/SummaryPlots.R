@@ -27,6 +27,7 @@ genome = "CHM13"
 genome = "Yoruban_feb_2018"
 genome = "Mitchell_CHM1_V2"
 genome = "NA12878"
+genome = "Clint"
 
 
 asmdirs = strsplit( Sys.glob("~/Desktop/work/assemblies/*"), "/") 
