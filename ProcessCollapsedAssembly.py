@@ -209,6 +209,10 @@ rule SplitFOFN:
 #  For read depth, and other future steps, it is necessary to map reads back to the assembly.
 #
 MINALN=3000 # remove spurious alignments from common repeat elements 
+if("minaln" in config):
+	MINALN = config["minaln"]
+print("Minimum Alignment Length: {}".format(MINALN))
+
 MINSCORE=MINALN
 ISPB=True; PBMM=False
 if( "ont" in config ):
