@@ -34,6 +34,7 @@ for idx, rgline in enumerate(header["RG"]):
 
 outbam = AlignmentFile(args.outfile, "wb", header=header)# template = bam1)
 
+seen = set()
 
 for idx,read in enumerate(bam1.fetch(until_eof=True)):
 	read.tlen = read.reference_length
@@ -45,8 +46,11 @@ for idx,read in enumerate(bam1.fetch(until_eof=True)):
 	#print(read.query_alignment_qualities)
 	read.query_qualities = None
 	
-	
-	outbam.write(read)
+	if(read.query_name not in seen):
+		outbam.write(read)
+	else:
+		print("Warning, duplicate read name: {}".format(read.query_name))
+	seen.add(read.query_name)
 
 outbam.close()
 
