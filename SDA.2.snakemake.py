@@ -454,6 +454,32 @@ else:
 			"""
 
 
+
+
+
+
+
+rule MapToRef:
+	input:	
+		asm="{ASM}.assemblies.fasta",
+		ref="ref.fasta",
+	output:
+		refsam="asms/{ASM}.bam",
+	threads: 8
+	shell:"""
+minimap2 \
+	{input.ref} {input.asm} \
+	-k 11 -a --eqx -t {threads} \
+	-r {bandwidth} \
+	-x asm20 | \
+	samtools view -bS -F 2308 - | \
+	samtools sort -m 4G -T tmp -o {output.refsam}
+samtools index {output.refsam}
+"""
+
+
+
+
 #
 #-----------------------------------------------------------------------------------------------------#
 #
@@ -528,25 +554,14 @@ if(os.path.exists("duplications.fasta")):
 
 
 
-	rule mapToRefAndDupsBlasr:
+	rule MapToDups:
 		input:	
 			asm="{ASM}.assemblies.fasta",
-			ref="ref.fasta",
 			dup="duplications.fasta",
 		output:
-			refsam="asms/{ASM}.bam",
 			dupsam="asms/{ASM}.dup.bam",
 		threads: 8
 		shell:"""
-minimap2 \
-	{input.ref} {input.asm} \
-	-k 11 -a --eqx -t {threads} \
-	-r {bandwidth} \
-	-x asm20 | \
-	samtools view -bS -F 2308 - | \
-	samtools sort -m 4G -T tmp -o {output.refsam}
-samtools index {output.refsam}
-
 minimap2 \
 	{input.dup} {input.asm} \
 	-k 11 -a --eqx -t {threads} \
