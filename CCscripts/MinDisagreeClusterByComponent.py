@@ -583,9 +583,10 @@ def RemoveSmallCuts(cuts, minCutSize=args.minCutSize):
 	i = 0
 	while i < len(cuts):
 		sites = sorted( [int(g.node[n]['pos']) for n in cuts[i]] )
-		minpos = min(sites)
-		maxpos = max(sites)
-		if( (len(cuts[i]) < minCutSize)  or ( (maxpos - minpos) < args.minlen) ):
+
+		if( (len(cuts[i]) < minCutSize) ): 
+			cuts.remove(cuts[i])
+		elif( (max(sites) - min(sites) ) < args.minlen ):
 			cuts.remove(cuts[i])
 		else:
 			i+=1
