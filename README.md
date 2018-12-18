@@ -119,4 +119,7 @@ This process only has one required input and that is a config file called `denov
 ```
 Once again `"ont" : "True"` can be added for use with ONT data. 
 
+### Please Cite ###
+Vollger, M. R. et al. Long-read sequence and assembly of segmental duplications. Nature Methods (2018). doi:10.1038/s41592-018-0236-3
+
 
