@@ -245,6 +245,14 @@ dim(df)
 # reorder Status factors for ggplot
 #
 df$Status <- factor(df$Status, levels=c(res, pr, mAsm, failed))
+# very bad hack to force the code to work if there are zero resolved assemblies
+if(sum(df$Status==res)==0){
+  tmp = df[df$Status==pr][1:2]
+  tmp$bestPerID=99.9
+  tmp$Status=res
+  df <- rbind(df, tmp)
+}
+
 
 #
 # remove some NAs
@@ -259,6 +267,8 @@ dfu = df[!duplicated(df$collapse),]
 dfs=df[df$Status==res | df$Status==pr, ]
 dfpr = dfs[dfs$Status == pr, ]
 # sum of each assembly type
+
+
 counts = c(sum(df$Status==pr), sum(df$Status==res), sum(df$Status==failed), sum(df$Status==mAsm))
 names(counts) = c(pr,res,failed,mAsm)
 counts
@@ -266,10 +276,10 @@ statusCounts = data.frame(Status = c(pr, res, failed, mAsm),
                      counts = counts)
 dim(df)
 statusCounts
+
 rangeRes = makeGRangesFromDataFrame(df[df$Status == res, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
 rangeDiv = makeGRangesFromDataFrame(df[df$Status == pr, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
 rangeMasm = makeGRangesFromDataFrame(df[df$Status == mAsm, ], seqnames.field=c("bestChr"), start.field="bestStart", end.field="bestEnd")
-
 
 MBs = c( paste(round(sum(width(reduce(rangeDiv)))/10^6,1), "Mbp"),
   paste(round(sum(width(reduce(rangeRes)))/10^6,1), "Mbp"),
@@ -588,12 +598,13 @@ if(F){
 #
 # read in marks data for plot
 #
-new = df[df$Status==res, c("bestMatch")]
-new$averagePerID = df[df$Status==res, "averageRefPerID"]
-new$aveRefLen = df[df$Status==res, "aveRefLength"]
-new$chr = df[df$Status==res, "bestChr"]
-new$start= df[df$Status==res, "bestStart"]
-new$end = df[df$Status==res,"bestEnd"]
+mask = (df$Status==res|df$Status==pr)
+new = df[mask, c("bestMatch")]
+new$averagePerID = df[mask, "averageRefPerID"]
+new$aveRefLen = df[mask, "aveRefLength"]
+new$chr = df[mask, "bestChr"]
+new$start= df[mask, "bestStart"]
+new$end = df[mask,"bestEnd"]
 new$Status=rep("ABP", length(new$aveRefLen))
 new$ID=seq(1, length(new$aveRefLen))
 new$averagePerID[new$averagePerID >= 100.0] = 99.999999
