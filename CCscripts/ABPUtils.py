@@ -555,7 +555,7 @@ def FindMutualInformation(gt, minCov, maxCov, names, filt=None, miOutFileName=No
                     nJConflicts = len(jConflicts)
                     nConflicts = nIConflicts + nJConflicts
                         
-                    print str(pos[i]) + "\t" + str(pos[j]) + "\t" + str(totalOverlapping) + "\t" + str(nSharedMinor) + "\t" + str(nConflicts) + "\t" + str(nIConflicts) + "\t" + str(nJConflicts) + "\t{:2.2f}".format(nConflicts/(2.0*(nConflicts+nSharedMinor)))
+                    #print str(pos[i]) + "\t" + str(pos[j]) + "\t" + str(totalOverlapping) + "\t" + str(nSharedMinor) + "\t" + str(nConflicts) + "\t" + str(nIConflicts) + "\t" + str(nJConflicts) + "\t{:2.2f}".format(nConflicts/(2.0*(nConflicts+nSharedMinor)))
                     if (conflicts == True and False):
                         if (pos is not None):
                             print iMinor
