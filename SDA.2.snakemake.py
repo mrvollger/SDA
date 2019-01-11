@@ -52,7 +52,9 @@ for group in groups:
 
 
 assemblers = ["canu", "wtdbg", "miniasm"]
-
+if("assembler" in config):
+	if(config["assembler"].lower() in assemblers):
+		assemblers = [ config["assembler"].lower() ]
 
 rule all:
 	input: "final",
