@@ -486,3 +486,22 @@ rule gephi:
 
 
 
+
+#
+# makes a modified coverage plot with CC groups drawn on top
+#
+rule DepthProfileWithCC:
+	input:
+		nucfreq="snvs/nofilter.consensus.nucfreq",
+		sites="CC/mi.gml.sites",
+	output: 
+		png="DepthWithCC.png",
+	shell:
+		"""
+		source {python3}
+		{base}autoThreshold.py --nucfreq {input.nucfreq} --psvsites {input.sites} --plot {output.png} 
+		"""
+
+
+
+
