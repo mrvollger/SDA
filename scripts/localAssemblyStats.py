@@ -8,7 +8,7 @@ if sys.version_info[0] < 3:
 else:
     from io import StringIO
 #from LocalAssembly import LocalAssembly
-from LocalAssembly2 import LocalAssembly
+from LocalAssembly3 import LocalAssembly
 import pandas as pd
 
 parser = argparse.ArgumentParser()
