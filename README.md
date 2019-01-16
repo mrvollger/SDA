@@ -22,7 +22,8 @@ Once `env_conda.cfg` has been updated and the anaconda environment is in your pa
 ```
 make
 ```
-We suggest using `gcc=8.1.0` because that is what we have used when installing SDA. 
+We suggest using `gcc=6.4.0` because that is what we have used when installing SDA. 
+Several people have run into an error with readToSNVList if it is complied with gcc 8.x so please complie with gcc 6. 
 
 
 
