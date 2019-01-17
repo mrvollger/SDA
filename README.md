@@ -90,11 +90,12 @@ Some users will find that while creating the file `CC/mi.cuts.gml.pdf` they get 
 ```
 undefined symbol: FT_Done_MM_Var 
 ```
-If you get this error we recommend re-installing the `java-jdk` as this has resolved the issue for others. 
+If you get this error we recommend re-installing `openjdk` as this has resolved the issue for others. 
 ```
 source activate sda-python-3 
-conda uninstall java-jdk
-conda install java-jdk
+conda uninstall openjdk
+conda install openjdk
+conda install -c bioconda canu=1.5 
 ```
 
 
