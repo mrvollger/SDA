@@ -64,7 +64,8 @@ rule all:
 
 # global wild card constraint on n whihc is the group idenitifier
 wildcard_constraints:
-    n="\d+"
+    n="\d+",
+	ASM="[^.]+"
 
 
 #-----------------------------------------------------------------------------------------------------#
