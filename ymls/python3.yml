@@ -19,7 +19,7 @@ dependencies:
   - htslib=1.7=0
   - libdeflate=1.0=h470a237_0
   - miniasm=0.3_r179=ha92aebf_0
-  - minimap2=2.13=ha92aebf_0
+  - minimap2=2.15=ha92aebf_0
   - pbbam=0.18.0=h1310cd9_1
   - perl-filesys-df=0.92=1
   - perl-threaded=5.22.0=13
@@ -37,7 +37,7 @@ dependencies:
   - trf=4.09=1
   - urllib3=1.12=py36_0
   - whatshap=0.16=py36_0
-  - wtdbg=2.1=h470a237_0
+  - wtdbg=2.3=ha92aebf_0  
   - xopen=0.3.2=py_1
   - aioeasywebdav=2.2.0=py36_0
   - aiohttp=3.4.2=py36h470a237_0
