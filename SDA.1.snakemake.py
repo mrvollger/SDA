@@ -333,7 +333,7 @@ if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta
 						--eqx \
 						-k 11 \
 						-t {threads} \
-						ref.fasta /dev/stdin | \
+						{input.ref} /dev/stdin | \
 						samtools view -bS -F 2308 - | \
 						samtools sort -m 4G -T tmp -o {output}
 			
