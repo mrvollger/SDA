@@ -111,8 +111,12 @@ conda install -c bioconda canu=1.5
 
 # Identifying Collapsed Duplications #
 
-I have written a snakemake (`ProcessCollapsedAssembly.py`) for identifying collapsed duplications within a de novo assembly. It requires the user to have a working install of `RepeatMasker`, but otherwise the dependencies are taken care of by `sda-python-3`. 
-
+I have written a snakemake (`ProcessCollapsedAssembly.py`) for identifying collapsed duplications within a de novo assembly. 
+It requires the user to have a working install of `RepeatMasker` and setup a config script called `env_RM.cfg`, but otherwise the dependencies are taken care of by `sda-python-3`. An exmaple of my config is shown below:
+```
+module load perl/5.14.2
+module load RepeatMasker/3.3.0
+```
 This process can be started by executing using this script `ProcessCollapsedAssembly.snake.sh` once the required input is in place. 
 
 ## Required input: ##
