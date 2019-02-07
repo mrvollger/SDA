@@ -195,7 +195,6 @@ if [ -s {input} ]; then
 			corOutCoverage=300 \
 			corMhapSensitivity=high \
 			corMinCoverage=1 \
-			gnuplotTested=true  \
 			-p asm useGrid=false  \
 			-d $PREFIX \
 			maxThreads={threads} cnsThreads={threads} ovlThreads={threads} \
