@@ -8,13 +8,11 @@ dependencies:
   - bcftools=1.9=h4da6232_0
   - bedtools=2.27.1=he941832_2
   - biopython=1.70=np112py36_1
-  - blasr=5.3.2=hac9d22c_3
-  - blasr_libcpp=5.3.1=hac9d22c_2
+  - blasr=5.3.2=hac9d22c_4
   - canu=1.8=pl526h470a237_0  
-  - htslib=1.7=0
   - miniasm=0.3_r179=ha92aebf_0
   - minimap2=2.15=ha92aebf_0
-  - pysam=0.14.1=py36hae42fb6_1
+  - pysam=0.15.2
   - snakemake=5.4.0=0  
   - whatshap=0.16=py36_0
   - wtdbg=2.3=ha92aebf_0  
@@ -22,7 +20,7 @@ dependencies:
   - hdf5=1.10.2=hc401514_1
   - networkx=2.1=py_1
   - pandas=0.23.4=py36hf8a1672_0
-  - pbmm2=0.8.1=ha87ae23_0
+  - pbmm2=0.12.0
   - pip=18.0=py36_1
   - numpy=1.12.1=py36he24570b_1
   - numpy-base=1.15.2=py36h81de0dd_1  
