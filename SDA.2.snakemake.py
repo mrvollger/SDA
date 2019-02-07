@@ -322,16 +322,16 @@ else:
 			else
 				source deactivate  2> /dev/null
 				source {python2}
-				which quiver
-				quiver \
+				which arrow
+				arrow \
 					--noEvidenceConsensusCall nocall --minCoverage 10 -j {threads} \
 					-r {input.asm} -o {output.quiver} {input.asmbam} \
-					|| ( >&2 echo " QUIVER FAILED TO RUN " && \
+					|| ( >&2 echo " ARROW FAILED TO RUN " && \
 					cp {input.asm} {output.quiver} )
 				
 				# add the head of the non quivered file
 				header=$(head -n 1 {input.asm})
-				header2=">group.{wildcards.n}_quiver "$(echo $header | sed -e 's/>//')
+				header2=">group.{wildcards.n}_arrow "$(echo $header | sed -e 's/>//')
 				sed -i "1s/.*/$header2/" {output.quiver} 
 			fi
 			'''
