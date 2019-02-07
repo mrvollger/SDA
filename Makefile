@@ -40,7 +40,9 @@ TestCases/SDAtest/ref.fasta:
 	rm -rf TestCases/SDAtest* 
 	cd TestCases/ && \
 	wget https://eichlerlab.gs.washington.edu/help/mvollger/SDA/SDAtest.tar.gz  && \
-	tar -zxvf SDAtest.tar.gz
+	wget https://eichlerlab.gs.washington.edu/help/mvollger/SDA/SDAtest2.tar.gz  && \
+	tar -zxvf SDAtest.tar.gz && \
+	tar -zxvf SDAtest2.tar.gz 
 
 clean: 
 	source env_conda.cfg && \
