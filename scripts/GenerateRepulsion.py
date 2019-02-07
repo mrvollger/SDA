@@ -73,7 +73,7 @@ for line in mi:
 			rep.append((i,j))
 		if( shared <= args.shared or lrt <= args.lrt ):
 			oldrep += 1
-			print(lrt, ilrt, jlrt, shared)
+			#print(lrt, ilrt, jlrt, shared)
 print(newrep, oldrep)
 
 
