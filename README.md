@@ -22,7 +22,7 @@ Here is an example of what your `env_conda.cfg` might look like.
 export CONDA_PATH=/your/local/anaconda/install # e.g. /net/eichler/vol2/home/mvollger/anaconda3
 export PATH=$CONDA_PATH/bin:$PATH
 
-# commands to load gcc as an example I proved that command I use to load gcc 
+# commands to load gcc as an example I have provided the command I use to load gcc 
 module load gcc/6.4.0
 
 ```
