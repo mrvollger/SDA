@@ -1,0 +1,34 @@
+name: sda-python-2
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+  - r
+dependencies:
+  - bcftools=1.9=h4da6232_0
+  - biopython=1.70=np112py27_1
+  - genomicconsensus=2.3.2=py27_0
+  - htslib=1.7=0
+  - pbcommand=1.1.1=py27h24bf2e0_0
+  - pbcore=1.5.1=py27_0
+  - pysam=0.14.1=py27hae42fb6_1
+  - python-consensuscore=1.1.1=py27h02d93b8_0
+  - python-consensuscore2=3.1.0=py27_0
+  - samtools=1.7=1
+  - cython=0.28.5=py27hfc679d8_0
+  - h5py=2.8.0=py27hb794570_1
+  - hdf5=1.10.2=hc401514_1
+  - matplotlib=2.2.3=py27h8e2386c_0
+  - networkx=1.11=py27_0
+  - pip=18.0=py27_1
+  - python=2.7.15=h9fef7bc_0
+  - readline=7.0=haf1bffa_1
+  - subprocess32=3.5.2=py27_0
+  - wheel=0.31.1=py27_1
+  - numpy=1.12.1=py27h9378851_1
+  - numpy-base=1.14.3=py27hdbf6ddf_0
+  - scipy=1.1.0=py27hc49cb51_0
+  - pip:
+    - consensuscore2==3.1.0
+prefix: /home/mitchell/anaconda3/envs/sda-python-2
+

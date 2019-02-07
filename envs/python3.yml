@@ -1,0 +1,40 @@
+name: sda-python-3
+channels:
+  - r
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - bcftools=1.9=h4da6232_0
+  - bedtools=2.27.1=he941832_2
+  - biopython=1.70=np112py36_1
+  - blasr=5.3.2=hac9d22c_3
+  - blasr_libcpp=5.3.1=hac9d22c_2
+  - canu=1.8=pl526h470a237_0  
+  - htslib=1.7=0
+  - miniasm=0.3_r179=ha92aebf_0
+  - minimap2=2.15=ha92aebf_0
+  - pbbam=0.18.0=h1310cd9_1
+  - pysam=0.14.1=py36hae42fb6_1
+  - rsa=3.1.4=py36_0
+  - snakemake=5.4.0=0  
+  - whatshap=0.16=py36_0
+  - wtdbg=2.3=ha92aebf_0  
+  - curl=7.61.0=h93b3f91_1
+  - drmaa=0.7.8=py_0
+  - hdf5=1.10.2=hc401514_1
+  - networkx=2.1=py_1
+  - openssl=1.0.2p=h470a237_0
+  - pandas=0.23.4=py36hf8a1672_0
+  - pip=18.0=py36_1
+  - readline=7.0=0
+  - wheel=0.31.1=py36_1
+  - zlib=1.2.11=h470a237_3
+  - numpy=1.12.1=py36he24570b_1
+  - numpy-base=1.15.2=py36h81de0dd_1  
+  - matplotlib=2.2.2=py36_1
+  - openjdk=8.0.121=1
+  - python=3.6.3=h1284df2_4
+  - pip:
+prefix: /net/eichler/vol2/home/mvollger/anaconda3/envs/sda-python-3
+
