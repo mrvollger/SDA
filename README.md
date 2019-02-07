@@ -9,20 +9,28 @@ git clone --recurse-submodules git://github.com/mvollger/SDA.git
 # Install: #
 The requirements for SDA are taken care of by two custom conda environments (sda-python-2 and sda-python-3). In order to run SDA, you must already have anaconda 3 installed on your system and you must be able to create conda environments. 
 
-Once that is done, modify `env_conda.cfg` so that it adds conda to your path. The `CONDA_PATH` variable must be set so that it points at you conda installation. Here is an example of what your `env_conda.cfg` might look like.
+Once that is done, create `env_conda.cfg` so that it adds conda to your path. The `CONDA_PATH` variable must be set so that it points at you conda installation. 
+In addition to your conda path we recommend adding gcc to your path and making your environment sparse.
+We suggest using `gcc=6.4.0` because that is what we have used when installing SDA. 
+Here is an example of what your `env_conda.cfg` might look like.
 ```
 #!/bin/bash
 
+# commands to clean your env...
+
+# commands for adding conda to your path...  
 export CONDA_PATH=/your/local/anaconda/install # e.g. /net/eichler/vol2/home/mvollger/anaconda3
 export PATH=$CONDA_PATH/bin:$PATH
 
+# commands to load gcc as an example I proved that command I use to load gcc 
+module load gcc/6.4.0
+
 ```
 
-Once `env_conda.cfg` has been updated and the anaconda environment is in your path (e.g. `source env_conda.cfg`), the `Makefile` can be run with:
+Once `env_conda.cfg` has been created and the anaconda environment is in your path (e.g. `source env_conda.cfg`), the `Makefile` can be run with:
 ```
 make
 ```
-We suggest using `gcc=6.4.0` because that is what we have used when installing SDA. 
 Several people have run into an error with readToSNVList if it is complied with gcc 8.x so please complie with gcc 6. 
 
 
