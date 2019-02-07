@@ -22,6 +22,7 @@ dependencies:
   - hdf5=1.10.2=hc401514_1
   - networkx=2.1=py_1
   - pandas=0.23.4=py36hf8a1672_0
+  - pbmm2=0.8.1=ha87ae23_0
   - pip=18.0=py36_1
   - numpy=1.12.1=py36he24570b_1
   - numpy-base=1.15.2=py36h81de0dd_1  
