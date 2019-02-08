@@ -14,8 +14,7 @@ from Bio import SeqIO
 SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
 snake_dir = SNAKEMAKE_DIR + "/"
 shell.executable("/bin/bash")
-#shell.prefix("source %s/env_PSV.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-shell.prefix("source %s/env_python3.cfg; " % SNAKEMAKE_DIR)
+shell.prefix("source %s/env_python3.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
 RMenv = snake_dir + "env_RM.cfg"
 
 configFileName = "config/denovo.setup.config.json"
@@ -24,30 +23,20 @@ configfile: configFileName
 reference = config["asm"]
 
 
-localrules: all, 
-			BedForCollapses,
-			GetOneKregionCoverage,
-			FiveKWindowStepOneK,
-			MergeBedForCollapses, 
-			getHighIdentity,
-			ConvertTsvToBedAndRgn,
-			MergeBed, 
-			combineRefFasta,
-			StartFofn,
-			getReferenceSequences,
-			intersectGenes,
-			GenerateBatchRunScript,
-			LocalAssembliesBed,
-			illuminaDone,
-			illuminaFakeDone,
+localrules: all, StartFofn, ConditionalOuts
 
 rule all:
 	input:
 		one="coverage/all.stats.txt",
-		done="LocalAssemblies/README.txt",
+		collapses="coverage/collapses.bed",
+		json="config/sda.config.json",
+		BedRgn="LocalAssemblies/BedAndRgn.done",
+		sdarefs="LocalAssemblies/Refs.done",
+		sdajson="LocalAssemblies/Configs.done",
+		sdabams="LocalAssemblies/Bams.done",
 		array="LocalAssemblies/RunAssembliesByArray.sh",
+		extra = "LocalAssemblies/extra.done"
 		#amb = os.path.dirname(os.path.realpath(reference)) + "/bwa.amb", # this is to index for bwa
-		illumina="illumina/done.txt",
 
 DIRS = "reference fofns coverage LocalAssemblies alignments" 
 
@@ -59,6 +48,8 @@ splitSize = 20
 recs = list(SeqIO.parse( config["asm"], "fasta"))
 if(splitSize > len(recs)):
 	splitSize = len(recs)
+
+
 rule splitRef:
 	input:
 		ref=config["asm"]
@@ -182,6 +173,12 @@ rule StartFofn:
 	shell:
 		"touch {output.start}"
 
+
+nLines = len(open(config["reads"]).readlines())
+maxIdx = int( np.ceil( nLines*1.0/config["read_files_per_job"] ) )
+IDXs = list(range(maxIdx))
+print("Using {} alignment jobs".format(maxIdx))
+
 #
 # split the baxh5 files into different fofns such that there are 10 bax files per fofn
 #
@@ -190,20 +187,22 @@ rule SplitFOFN:
 		fofn = config["reads"],
 		mystart = "fofns/startFofn" #rules.StartFofn.output.start
 	output:
-		fofnSplit=dynamic("fofns/reads.{index}.fofn")
+		fofnSplit=expand("fofns/reads.{index}.fofn", index=IDXs)
 	params:
 		mem="1G",
 		cores=1,
 		ReadFilesPerJob=config["read_files_per_job"]
-	shell:
-		"""
-		fofn=$(readlink -f {input.fofn})
-		cd fofns 
-		split --numeric --lines {params.ReadFilesPerJob} $fofn reads.
-		for f in $(ls reads.*); do
-			mv $f $f.fofn 
-		done 
-		"""
+	run:
+		fofn = open(config["reads"]).readlines()	
+		nLines = len(fofn)
+		batch = params["ReadFilesPerJob"]
+		splitLists = [ fofn[i:(i + batch)] for i in range(0, nLines, batch) ]  
+		for idx, sublist in enumerate(splitLists):
+			out = open("fofns/reads.{}.fofn".format(idx), "w+")
+			for line in sublist:
+				line = os.path.abspath(line.strip()) + "\n"
+				out.write(line)
+			out.close()
 
 #
 #  For read depth, and other future steps, it is necessary to map reads back to the assembly.
@@ -293,7 +292,7 @@ pbmm2 index {input} {output}
 pbmm2 align \
 	-r 50000 \
 	-j {threads} \
-	{input.fofn} {input.mmi} | \
+	{input.mmi} {input.fofn} | \
 	samtools view -bS -F 2308 - | \
 	samtools sort -@ {threads} -m 2G -o {output.align} 
 """
@@ -434,13 +433,12 @@ bedtools coverage -bed -mean -sorted -a {input.regions} -b {input.bam} | \
 #
 rule MergeBed:
 	input:
-		coverage=dynamic(rules.BamToCoverage.output.coverage),
+		coverage=expand("coverage/coverage.{index}.bed", index=IDXs),
 	output:
 		bedsort="coverage/all.merged.bed",
 	params:
 		mem="16G",
 		cores=1,
-		# for some reason this has to be run locally or the dynamic input gets a missing file exception
 	run:
 		files = sorted(input["coverage"])
 		cols = ["contig", "start", "end", "cov"]
@@ -456,79 +454,6 @@ rule MergeBed:
 		
 		merged.to_csv(output["bedsort"], sep="\t", header = False, index = False)
 
-#
-# calculate coverage for 1k
-#
-# these were tests to see if I should try different step sizes, I do not think I should
-rule GetOneKregionCoverage:
-	input:
-		bed="coverage/all.merged.bed",
-		regions1k="coverage/regions.1000.bed",
-	output:
-		bed="coverage/all.1000.merged.bed",
-	params:
-		mem='16G',
-		cores=1,
-	run:
-		print("starting the read of all.merged.bed")
-		cols = ["contig", "start", "end", "coverage"]
-		dtypes = {"contig":str, "start":int, "end":int, "cov":float}
-		bed = pd.read_csv(input["bed"], sep = "\t", header=None, names = cols, dtype=dtypes, engine="c")
-		print("done reading")
-		
-		out = []
-		for contig, group in bed.groupby("contig", as_index=False):
-			pre = 0
-			for nxt in range(10,len(group), 10):
-				start = group.iloc[pre]["start"]
-				end = group.iloc[nxt-1]["end"]
-				coverage = group.iloc[pre:nxt]["coverage"].mean()
-				out.append("{}\t{}\t{}\t{}\n".format(contig, start, end, coverage))
-				pre = nxt
-			nxt = len(group)	
-			start = group.iloc[pre]["start"]
-			end = group.iloc[nxt-1]["end"]
-			coverage = group.iloc[pre:nxt]["coverage"].mean()
-			out.append("{}\t{}\t{}\t{}\n".format(contig, start, end, coverage))
-			print(contig)
-		out = "".join(out)
-		open(output["bed"], "w+").write(out)
-
-
-'''
-#
-# calculate coverage in 5K windows, and step 1K at a time
-#
-# these were tests to see if I should try different step sizes, I do not think I should
-rule FiveKWindowStepOneK:
-	input:
-		bed="coverage/all.1000.merged.bed",
-	output:
-		bed="coverage/all.5000.merged.bed",
-	params:
-		mem='16G',
-		cores=1,
-	run:
-		cols = ["contig", "start", "end", "coverage"]
-		dtypes = {"contig":str, "start":int, "end":int, "cov":float}
-		bed = pd.read_csv(input["bed"], sep = "\t", header=None, names = cols, dtype=dtypes, engine="c")
-		out = []
-		for contig, group in bed.groupby("contig", as_index=False):
-			length = len(group)
-			df = group.as_matrix(columns = ["start", "end", "coverage"])
-			for idx in range(length):	
-				start = int(df[idx,0])
-				endidx = idx + 5 
-				if(endidx >= length):
-					endidx = length 	
-				end = int(df[endidx-1][1])
-				coverage = df[idx:endidx, 2].mean()
-				out.append("{}\t{}\t{}\t{}\n".format(contig, start, end, coverage))
-			print( out[-1] )
-
-		out = "".join(out)
-		open(output["bed"], "w+").write(out)
-'''
 
 #
 # calcualte the average coverages 
@@ -536,10 +461,8 @@ rule FiveKWindowStepOneK:
 rule GetCoverageStats:
 	input:
 		one="coverage/all.merged.bed",
-		#oneK="coverage/all.1000.merged.bed",
 	output:
 		one="coverage/all.stats.txt",
-		#oneK="coverage/all.1000.stats.txt",
 	params:
 		mem='16G',
 		cores=1,
@@ -564,7 +487,6 @@ rule GenerateMinAndMax:
 	input:
 		stats="coverage/all.stats.txt"
 	output:
-		#minmax="MinMax.sh",
 		json="config/sda.config.json",
 	params:
 		mem='1G',
@@ -578,11 +500,8 @@ rule GenerateMinAndMax:
 		# mincov = int( stats.iloc[0]["mean_coverage"] - 3*stats.iloc[0]["std_coverage"] )
 		mincov = int(stats.iloc[0]["mean_coverage"]/2.0)
 		
-		out = "export MINCOV={}\nexport MAXCOV={}\nexport MINTOTAL={}\n".format(mincov, maxcov, mintotal)
-		#open(output["minmax"], "w+").write(out)
-		out2 = '{{\n\t"MINCOV" : {},\n\t"MAXCOV" : {},\n\t"MINTOTAL" : {},\n'.format(mincov, maxcov, mintotal)
-		# add the overall config file for the project
-		out2 += open(configFileName).read().split('{', 1)[-1]
+		out2 = '{{\n\t"MINCOV" : {},\n\t"MAXCOV" : {},\n\t"MINTOTAL" : {},\n\t"project" : \"{}\"\n}}\n'.format(
+				mincov, maxcov, mintotal, config["project"])
 		open(output["json"], "w+").write(out2)
 
 #
@@ -619,7 +538,6 @@ rule BedForCollapses:
 	input:
 		combined="coverage/all.repeatCounted.bed",
 		stats="coverage/all.stats.txt",
-		#json=rules.GenerateMinAndMax.output.json,
 		fai=reference + ".fai",
 	output:
 		temp = temp("coverage/unmerged.tmp.collapses.bed"),
@@ -741,7 +659,7 @@ rule FilterCollapses:
 		#unf = "unfiltered.collapses.bed",
 	output:
 		collapses="coverage/collapses.bed",
-		png ="coverage/SizeRepeatFilter.png",
+		#png ="coverage/SizeRepeatFilter.png",
 	params:
 		mem='8G',
 		cores=1,
@@ -757,9 +675,10 @@ rule FilterCollapses:
 		collapses.to_csv(outf, header=False, index=False, sep="\t" )
 
 		# plot what filter will be 
-		cmd = "{}scripts/PlotFilterBySizeAndRepeatContent.R --bed {} --png {} --size {} --repeatContent {}".format(
-				snake_dir, input["unf"], output["png"], minsize, maxRC)
-		shell(cmd)
+		# removed R to make the install easier. So not generating this plot 
+		#cmd = "{}scripts/PlotFilterBySizeAndRepeatContent.R --bed {} --png {} --size {} --repeatContent {}".format(
+		#		snake_dir, input["unf"], output["png"], minsize, maxRC)
+		#shell(cmd)
 
 
 # creates a regions file that has all the regions that are collapsed
@@ -783,7 +702,6 @@ rule LocalAssembliesRegions:
 		df["ID"] = df[0] + "." + df.start.map(str) + "." + df.end.map(str) + "/"
 		df[["ID"]].to_csv(output["regions"], header=False, index=False, sep="\t")
 		
-		# for some reason making directories in a dynamic rule messes things up,
 		# so i am going to make the collapse directories here
 		rfile = open(output["regions"])
 		dirsForShell = ""
@@ -797,17 +715,23 @@ rule LocalAssembliesRegions:
 		shell("mkdir -p " + dirsForShell)
 
 
+
+
+#-------------------------------------------------------------------------------#
+#
+#  SETUP REQUIRED INPUT FILES FOR SDA
+#
+#-------------------------------------------------------------------------------#
+
 #
 # add a bed file to each region specifying where in asm they were 
 #
 rule LocalAssembliesBed:
 	input:
-		collapses = rules.FilterCollapses.output.collapses,
-		#collapses="collapses.bed",
+		collapses="coverage/collapses.bed",
 		regions="LocalAssemblies/regions.txt",
 	output:
-		bed=dynamic("LocalAssemblies/{region}/orig.bed"),
-		rgn=dynamic("LocalAssemblies/{region}/orig.rgn"),
+		done="LocalAssemblies/BedAndRgn.done",
 	params:
 		mem='8G',
 		cores=1,
@@ -832,310 +756,113 @@ rule LocalAssembliesBed:
 			rgn = "{}:{}-{}\n".format(line[0], int(float(line[1])), int(float(line[2])) )
 			open(region + "/orig.bed", "w+").write(bed)
 			open(region + "/orig.rgn", "w+").write(rgn)
+		
+		shell("touch {output.done}")
 
+def GetRegionInfo(collapses):
+	myfile = open(collapses)
+	rtn = []
+	for line in myfile:
+		tokens = line.strip().split()
+		chrm = tokens[0]
+		start = tokens[1]
+		end = tokens[2]
+		curdir = "LocalAssemblies/{}.{}.{}/".format(chrm, start, end)
+		rtn.append((curdir, chrm, start, end))
+	myfile.close()
+	return(rtn)
+
+def created(my_path):
+	return( os.path.exists(my_path) and (os.path.getsize(my_path) > 0) )
 
 #
 # using the .rgn files make a fasta file consisting of the collapse 
 #
 rule LocalAssembliesRef:
 	input:
-		rgn="LocalAssemblies/{region}/orig.rgn",
-		bed="LocalAssemblies/{region}/orig.bed",
+		done="LocalAssemblies/BedAndRgn.done",
+		collapses="coverage/collapses.bed",
 		asm=config["asm"]
 	output:
-		refs="LocalAssemblies/{region}/ref.fasta",
+		refs="LocalAssemblies/Refs.done",
 	params:
 		mem='4G',
 		cores=1,
-	shell:
-		"""
-		region=$(cat {input.rgn})
-		samtools faidx {input.asm} $region > {output.refs}
-		"""
+	run:
+		info = GetRegionInfo(input["collapses"])
+		for curdir, chrm, start, end in info:
+			out = curdir + "ref.fasta"
+			shell("samtools faidx {} {}:{}-{} > {}".format(input["asm"], chrm, start, end, out))
+			assert created(out)
+		shell("touch {output.refs}")
+
+
+# aggregate the output regions 
+def getRegions():
+	regions1, = glob_wildcards("LocalAssemblies/{region}/orig.rgn").region,
+	regions2, = glob_wildcards("LocalAssemblies/{region}/orig.bed").region,
+	assert len(regions1) == len(regions2)
+	return(regions1)
+
+def aggrBam(wildcards):
+	regions = getRegions()
+	tmp= expand("LocalAssemblies/{region}/reads.orig,bam", region = regions) 
+	return(tmp)
 
 #
 # find the reads in all the bam files that map to that region
 #
 rule LocalAssembliesBam:
 	input:
-		refs=rules.LocalAssembliesRef.output.refs,
-		rgn= rules.LocalAssembliesRef.input.rgn,
-		bed= rules.LocalAssembliesRef.input.bed,
+		done="LocalAssemblies/BedAndRgn.done",
+		collapses="coverage/collapses.bed",
+		alns=expand("alignments/align.{index}.bam", index = IDXs), 
+		#bed="LocalAssemblies/{region}/orig.bed",
+		#refs="LocalAssemblies/{region}/ref.fasta",
 	output:
-		bams="LocalAssemblies/{region}/reads.orig.bam"
+		#bams="LocalAssemblies/{region}/reads.orig.bam"
+		bams = "LocalAssemblies/Bams.done"
 	params:
-		mem='4G',
+		mem='24G',
 		cores=1,
 	run:
-		#import pysam
-		#myfile = open(input["rgn"])
-		#region = myfile.read().strip()
-		#myfile.close()
+		info = GetRegionInfo(input["collapses"])
+		for curdir, chrm, start, end in info:
+			out = curdir + "reads.orig.bam"
+			prefix = curdir + "tmp." 
+			for idx, bam in enumerate(input["alns"]):
+				tmpbam = prefix + str(idx) + ".bam"
+				shell("samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam))			
+				assert created(tmpbam)
+			shell("samtools merge {} {}*.bam".format(out, prefix) )
+			shell("rm {}*.bam".format(prefix) )
+			assert created(out)
 
-		bed = open(input["bed"]).read().strip()
-		token = bed.split()
-		chrm = token[0]
-		start = token[1]
-		end = token[2]
+		shell("touch {output.bams}")
 
-		#allreads = None
-		cmd = ""
-		tmpprefix = "LocalAssemblies/" + wildcards["region"] + "/tmp."
-		for idx, bam in enumerate(sorted(glob.glob("alignments/align.*.bam"))):
-			tmpbam = tmpprefix + str(idx) + ".bam"
-			cmd += "samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam)  			
-		
-		shell(cmd)
-		shell("samtools merge {} {}*.bam".format(output["bams"], tmpprefix) )
-		shell("rm {}*.bam".format(tmpprefix) )
 #
-# copy ofver the min max stats so that SDA knows mincov, maxcov, mintotal
+# copy over the min max stats so that SDA knows mincov, maxcov, mintotal
 #
 rule LocalAssembliesConfig:
 	input:
-		json=rules.GenerateMinAndMax.output.json,
-		bams=rules.LocalAssembliesBam.output.bams,
+		done="LocalAssemblies/BedAndRgn.done",
+		json="config/sda.config.json",
+		collapses="coverage/collapses.bed",
 	output:
-		cov="LocalAssemblies/{region}/sda.config.json",
+		#cov="LocalAssemblies/{region}/sda.config.json",
+		covs="LocalAssemblies/Configs.done",
 	params:
 		mem='1G',
 		cores=1,
-	shell:
-		"""
-		cp {input.json} {output.cov}
-		"""
-
-
-#
-# create the sequences in the reference that best match what I am generating 
-#
-GRCh38 = config["reference"]
-fai = GRCh38 + ".fai"  
-sa = GRCh38 + ".sa"  
-#
-# combine all of the ref.fastas so I can align them with one command, (much faster)
-#
-rule combineRefFasta:
-	input:
-		cov=dynamic(rules.LocalAssembliesConfig.output.cov),
-		dupref=dynamic(rules.LocalAssembliesRef.output.refs),
-	output:
-		allref="LocalAssemblies/all.ref.fasta",
-	params:
-		mem='1G',
-		cores=1,
-		# must be local to compress dynamic on rerun startign at this point. so it is now a local rule
-	shell:
-		"""
-		> {output.allref}
-		for i in {input.dupref}; do
-			echo $i
-			cat $i >> {output.allref}
-		done
-		"""
-
-#
-# map the collapse the the human reference
-#
-rule duplicationsFasta:
-	input:
-		dupref=rules.combineRefFasta.output.allref,
-	output:
-		dupreffai="LocalAssemblies/all.ref.fasta.fai",
-		dupsam="LocalAssemblies/all.ref.fasta.sam",
-	params:
-		mem='8G',
-		cores=8,
-	threads: 8
-	shell:""" samtools faidx {input.dupref}
-if [ "blasr" == "noblasr" ]; then 
-	source ~/.bashrc
-	blasr -nproc {threads} \
-			-sa {sa} \
-			-sam \
-			-out /dev/stdout \
-			-minMatch 11 -maxMatch 20 -nCandidates 50 -bestn 30 \
-			{input.dupref} {GRCh38} | \
-			samtools view -h -F 4 - | samtools sort -@ {threads} -m 8G -T tmp -o {output.dupsam}
-else
-	# minimap does not work nearly as well as blasr for this. So if you can install an old version of blasr please do
-	for setting in asm20; do
-		minimap2 \
-				-ax $setting \
-				-N 30 -p .20 \
-				--eqx \
-				-r 100000 -s 10000 \
-				-t {threads} \
-				{GRCh38} {input.dupref} | \
-				samtools view -h -F 4 - | \
-				samtools sort -m 4G -T tmp -o LocalAssemblies/$setting".sam"
-	done
-
-	grep --no-filename "^@" LocalAssemblies/asm*.sam  > {output.dupsam}
-	grep --no-filename -v "^@" LocalAssemblies/asm*.sam >> {output.dupsam}
-
-fi 
-"""
-	
-#
-# filter the sam file to only include high identity long contigs 
-#
-rule getHighIdentity:
-	input:
-		dupsam=rules.duplicationsFasta.output.dupsam,
-		#dupsam="LocalAssemblies/all.ref.fasta.sam",
-	output:
-		duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
-	params:
-		mem='4G',
-		cores=1,
-	shell:
-		"""
-		{snake_dir}/scripts/samIdentity.py --header {input.dupsam} > {output.duptsv}
-		"""
-#
-# generate two bed file for each assmebliy, one with the region of the collapse, and one with 100000 bp of slop 
-# on either side
-#
-rule ConvertTsvToBedAndRgn:
-	input:
-		duptsv=rules.getHighIdentity.output.duptsv,
-		#duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
-	output:
-		bedDone="LocalAssemblies/bed.done.txt",
-		#dupbed=dynamic("LocalAssemblies/{region}/ref.fasta.long.bed")
-	params:
-		mem='4G',
-		cores=1,
 	run:
-		#names=["contig", "start", "end", "read", "x", "y", "z", "z", "perID", "m", "mm", "i", "d"]
-		#df = pd.read_csv( input["duptsv"], sep="\t", header=None, names=names)
-		df = pd.read_csv( input["duptsv"], sep="\t")
-		df["length"] = df["reference_end"] - df["reference_start"]
-		df=df.ix[ (df["length"]>=5000) & (df["perID_by_events"] > 0.80) ]
-		df.reset_index(drop=True, inplace=True)
-		
-		allbed = "LocalAssemblies/all.ref.fasta.bed"
-		
-		df[["reference_name", "reference_start", "reference_end"]].sort_values(by=['reference_name', 'reference_start']).to_csv(allbed, sep="\t", index=False, header=False)
-		#shell("bedtools merge -d 5000 -i {} > {}".format(allbed + ".tmp", allbed ) )	
-		
-		shell("bedtools slop -i {} -g {} -b 100000 > {}".format(allbed, fai, allbed+".slop"))	
-		slop = pd.read_csv( allbed + ".slop", sep="\t", header=None, names=["contig", "start", "end"])
-		df["longstart"] = slop["start"].astype('int64')
-		df["longend"] = slop["end"].astype('int64')
-
-		grouped = df.groupby(["query_name"])
-		counter = 0
-		for name, group in grouped:
-			counter += 1
-			match =  re.search('(.+):(\d+)-(\d+).*', name)
-			print(name, counter)
-			if(match):
-				region = "{}.{}.{}".format(match.group(1),match.group(2),match.group(3))
-				# short bed file
-				outfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
-				group[["reference_name", "reference_start", "reference_end"]].drop_duplicates().to_csv(outfile, sep="\t", index=False, header=False)
-				#shell( "sort -u {} -o {}".format(outfile, outfile) ) # remove duplicates 
-				# long bed file
-				outfile2 = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
-				group[["reference_name", "longstart", "longend"]].drop_duplicates().to_csv(outfile2, sep="\t", index=False, header=False)
-				#shell( "sort -u {} -o {}".format(outfile2, outfile2) ) # remove duplicates 
-		shell("touch " + output["bedDone"])
-	
+		info = GetRegionInfo(input["collapses"])
+		for curdir, chrm, start, end in info:
+			out = curdir + "sda.config.json"
+			shell("cp {} {}".format(input["json"], out))
+			assert created(out)
+		shell("touch {output.covs}")
 
 
-
-#
-# actaully fetch that region from the genome 
-#
-rule getReferenceSequences:
-	input:
-		bedDone="LocalAssemblies/bed.done.txt",
-		regions="LocalAssemblies/regions.txt",
-	output:
-		refDone="LocalAssemblies/ref.done.txt",
-	params:
-		mem='4G',
-		cores=1,
-	run:
-		regions = open(input["regions"])
-
-		groups = []
-
-		for region in regions.readlines(): 
-			region = region.strip()[:-1]
-			bedfile = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
-			fastafile = "LocalAssemblies/{}/duplications.fasta".format(region)
-			# the awk part gets rid of duplicates 
-			cmd = "bedtools getfasta -fi {} -bed {} | awk '!a[$0]++' > {}".format(GRCh38, bedfile, fastafile)
-			if(os.path.exists(bedfile)):
-				groups.append(cmd)
-		
-		start = 0
-		for end in range(0, len(groups), 50):
-			cmd = " ; ".join(groups[start:end])
-			shell(cmd)
-			start = end
-		cmd = " ; ".join(groups[start:len(groups)])
-		shell(cmd)
-
-		shell("touch " + output["refDone"])
-
-
-
-#
-# get intersection of genes
-#
-genes = config["genes"]
-rule intersectGenes:
-	input:
-		regions="LocalAssemblies/regions.txt",
-		refdone = rules.getReferenceSequences.output.refDone,
-	output:
-		mydone = "LocalAssemblies/README.txt"
-	params:
-		mem='4G',
-		cores=1,
-	run:
-		regions = open(input["regions"])
-		groups=[]
-		for region in regions.readlines(): 
-			region = region.strip()[:-1]
-			bedfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
-			outgenes = "LocalAssemblies/{}/ref.fasta.genes.bed".format(region)
-			cmd = "bedtools intersect -wo -a {} -b {} | bedtools sort -i - > {} ".format(genes, bedfile, outgenes)
-			if(os.path.exists(bedfile)):
-				groups.append(cmd)
-		
-		start = 0
-		for end in range(0, len(groups), 50):
-			cmd = " ; ".join(groups[start:end])
-			shell(cmd)
-			start = end
-		cmd = " ; ".join(groups[start:len(groups)])
-		shell(cmd)
-		
-		shell("touch " + output["mydone"])
-
-
-
-#
-#
-#
-rule GenerateBatchRunScript:
-	input:
-		regions="LocalAssemblies/regions.txt",
-		refdone = rules.getReferenceSequences.output.refDone,
-		mydone = rules.intersectGenes.output.mydone,
-	output:
-		array = "LocalAssemblies/RunAssembliesByArray.sh",
-	run:
-		path = os.getcwd()
-		numJobs = len( open( input["regions"]).readlines() )	
-		array =  arrayScript.format(numJobs, path, path) 
-		open(output["array"], "w+").write(array)
-		shell("mkdir -p LocalAssemblies/out; chmod 777 {output.array}")
 
 
 arrayScript = """#!/usr/bin/env  bash
@@ -1159,10 +886,243 @@ arrayScript = """#!/usr/bin/env  bash
 
 cwd=`awk "NR == $SGE_TASK_ID"  regions.txt`
 cd $cwd
-/net/eichler/vol2/home/mvollger/projects/SDA/SDA
+{}/SDA
 cd ..
 
 """
+#
+# This rule generates a script that submits and array job of SDAs
+# it will not be helpful to those that do not have a sungird cluster
+#
+rule GenerateBatchRunScript:
+	input:
+		regions="LocalAssemblies/regions.txt",
+	output:
+		array = "LocalAssemblies/RunAssembliesByArray.sh",
+	run:
+		path = os.getcwd()
+		numJobs = len( open( input["regions"]).readlines() )	
+		array =  arrayScript.format(numJobs, path, path, snake_dir) 
+		open(output["array"], "w+").write(array)
+		shell("mkdir -p LocalAssemblies/out; chmod 777 {output.array}")
+
+#-------------------------------------------------------------------------------#
+
+
+
+
+
+
+
+
+
+
+#-------------------------------------------------------------------------------#
+#
+#  SETUP OPTIONAL INPUT FILES FOR SDA
+#
+#-------------------------------------------------------------------------------#
+if("reference" in config):
+	#
+	# create the sequences in the reference that best match what I am generating 
+	#
+	GRCh38 = config["reference"]
+	fai = GRCh38 + ".fai"  
+	sa = GRCh38 + ".sa"  
+	#
+	# combine all of the ref.fastas so I can align them with one command, (much faster)
+	#
+	rule combineRefFasta:
+		input:
+			collapses="coverage/collapses.bed",
+			refs="LocalAssemblies/Refs.done",
+		output:
+			allref="LocalAssemblies/all.ref.fasta",
+		params:
+			mem='1G',
+			cores=1,
+		run:	
+			info = GetRegionInfo(input["collapses"])
+			shell("> {output.allref}")
+			for curdir, chrm, start, end in info:
+				fasta = curdir + "ref.fasta"
+				shell("cat {} >> {}".format(fasta, output["allref"]))
+
+	"""
+	> {output.allref}
+	for i in {input.dupref}; do
+		echo $i
+		cat $i >> {output.allref}
+	done
+	"""
+
+	#
+	# map the collapse the the human reference
+	#
+	rule duplicationsFasta:
+		input:
+			dupref=rules.combineRefFasta.output.allref,
+		output:
+			dupreffai="LocalAssemblies/all.ref.fasta.fai",
+			dupsam="LocalAssemblies/all.ref.fasta.sam",
+		params:
+			mem='8G',
+			cores=8,
+		threads: 8
+		shell:""" 
+samtools faidx {input.dupref}
+minimap2 \
+	-ax asm20 \
+	-N 30 -p .20 \
+	--eqx \
+	-r 50000 -s 10000 \
+	-t {threads} \
+	{GRCh38} {input.dupref} | \
+	samtools view -h -F 4 - | \
+	samtools sort -m 4G -T tmp -o {output.dupsam}
+"""
+		
+	#
+	# filter the sam file to only include high identity long contigs 
+	#
+	rule getHighIdentity:
+		input:
+			dupsam=rules.duplicationsFasta.output.dupsam,
+			#dupsam="LocalAssemblies/all.ref.fasta.sam",
+		output:
+			duptsv="LocalAssemblies/all.ref.fasta.identity.tsv",
+		params:
+			mem='4G',
+			cores=1,
+		shell:
+			"""
+			{snake_dir}/scripts/samIdentity.py --header {input.dupsam} > {output.duptsv}
+			"""
+	#
+	# generate two bed file for each assmebliy, one with the region of the collapse, and one with 100000 bp of slop 
+	# on either side
+	#
+	rule ConvertTsvToBedAndRgn:
+		input:
+			duptsv=rules.getHighIdentity.output.duptsv,
+		output:
+			bedDone="LocalAssemblies/bed.done.txt",
+		params:
+			mem='4G',
+			cores=1,
+		run:
+			#names=["contig", "start", "end", "read", "x", "y", "z", "z", "perID", "m", "mm", "i", "d"]
+			#df = pd.read_csv( input["duptsv"], sep="\t", header=None, names=names)
+			df = pd.read_csv( input["duptsv"], sep="\t")
+			df["length"] = df["reference_end"] - df["reference_start"]
+			df=df.ix[ (df["length"]>=5000) & (df["perID_by_events"] > 0.80) ]
+			df.reset_index(drop=True, inplace=True)
+			
+			allbed = "LocalAssemblies/all.ref.fasta.bed"
+			
+			df[["reference_name", "reference_start", "reference_end"]].sort_values(by=['reference_name', 'reference_start']).to_csv(allbed, sep="\t", index=False, header=False)
+			#shell("bedtools merge -d 5000 -i {} > {}".format(allbed + ".tmp", allbed ) )	
+			
+			shell("bedtools slop -i {} -g {} -b 100000 > {}".format(allbed, fai, allbed+".slop"))	
+			slop = pd.read_csv( allbed + ".slop", sep="\t", header=None, names=["contig", "start", "end"])
+			df["longstart"] = slop["start"].astype('int64')
+			df["longend"] = slop["end"].astype('int64')
+
+			grouped = df.groupby(["query_name"])
+			counter = 0
+			for name, group in grouped:
+				counter += 1
+				match =  re.search('(.+):(\d+)-(\d+).*', name)
+				print(name, counter)
+				if(match):
+					region = "{}.{}.{}".format(match.group(1),match.group(2),match.group(3))
+					# short bed file
+					outfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
+					group[["reference_name", "reference_start", "reference_end"]].drop_duplicates().to_csv(outfile, sep="\t", index=False, header=False)
+					#shell( "sort -u {} -o {}".format(outfile, outfile) ) # remove duplicates 
+					# long bed file
+					outfile2 = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
+					group[["reference_name", "longstart", "longend"]].drop_duplicates().to_csv(outfile2, sep="\t", index=False, header=False)
+					#shell( "sort -u {} -o {}".format(outfile2, outfile2) ) # remove duplicates 
+			shell("touch " + output["bedDone"])
+		
+
+
+
+	#
+	# actaully fetch that region from the genome 
+	#
+	rule getReferenceSequences:
+		input:
+			bedDone="LocalAssemblies/bed.done.txt",
+			regions="LocalAssemblies/regions.txt",
+		output:
+			refDone="LocalAssemblies/ref.done.txt",
+		params:
+			mem='4G',
+			cores=1,
+		run:
+			regions = open(input["regions"])
+
+			groups = []
+
+			for region in regions.readlines(): 
+				region = region.strip()[:-1]
+				bedfile = "LocalAssemblies/{}/ref.fasta.long.bed".format(region)
+				fastafile = "LocalAssemblies/{}/duplications.fasta".format(region)
+				# the awk part gets rid of duplicates 
+				cmd = "bedtools getfasta -fi {} -bed {} | awk '!a[$0]++' > {}".format(GRCh38, bedfile, fastafile)
+				if(os.path.exists(bedfile)):
+					groups.append(cmd)
+			
+			start = 0
+			for end in range(0, len(groups), 50):
+				cmd = " ; ".join(groups[start:end])
+				shell(cmd)
+				start = end
+			cmd = " ; ".join(groups[start:len(groups)])
+			shell(cmd)
+
+			shell("touch " + output["refDone"])
+
+	if("genes" in config):
+		#
+		# get intersection of genes
+		#
+		genes = config["genes"]
+		rule intersectGenes:
+			input:
+				regions="LocalAssemblies/regions.txt",
+				refdone = rules.getReferenceSequences.output.refDone,
+			output:
+				mydone = "LocalAssemblies/genes.done.txt"
+			params:
+				mem='4G',
+				cores=1,
+			run:
+				regions = open(input["regions"])
+				groups=[]
+				for region in regions.readlines(): 
+					region = region.strip()[:-1]
+					bedfile = "LocalAssemblies/{}/ref.fasta.bed".format(region)
+					outgenes = "LocalAssemblies/{}/ref.fasta.genes.bed".format(region)
+					cmd = "bedtools intersect -wo -a {} -b {} | bedtools sort -i - > {} ".format(genes, bedfile, outgenes)
+					if(os.path.exists(bedfile)):
+						groups.append(cmd)
+				
+				start = 0
+				for end in range(0, len(groups), 50):
+					cmd = " ; ".join(groups[start:end])
+					shell(cmd)
+					start = end
+				cmd = " ; ".join(groups[start:len(groups)])
+				shell(cmd)
+				
+				shell("touch " + output["mydone"])
+
+#-------------------------------------------------------------------------------#
+
+
 
 
 
@@ -1333,14 +1293,38 @@ if("illumina" in config):
 
 
 
-else:
-	rule illuminaFakeDone:
-		input:
-			asm=ancient(reference),
-		output:
-			illumina="illumina/done.txt"
-		shell:
-			"""
-			touch {output.illumina}
-			"""	
+
+
+
+#
+# CHECK FOR THE OPTIONAL OUTPUTS
+#
+def condInput(wildcards):
+	illumina="illumina/done.txt"
+	genes ="LocalAssemblies/genes.done.txt"
+	dups="LocalAssemblies/ref.done.txt"
+	rtn = []
+	if("illumina" in config):
+		rtn.append(illumina)
+	if("genes" in config):
+		rtn.append(genes)
+	if("reference" in config):
+		rtn.append(dups)
+	return(rtn)
+
+rule ConditionalOuts:
+	input:
+		cond = condInput,
+	output:
+		extra = temp("LocalAssemblies/extra.done"),
+	params:
+		mem='4G',
+		cores=1,
+	shell:"""
+touch {output.extra}
+"""
+		
+
+
+
 
