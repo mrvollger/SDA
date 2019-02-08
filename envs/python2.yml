@@ -14,6 +14,7 @@ dependencies:
   - cython=0.28.5=py27hfc679d8_0
   - h5py=2.8.0=py27hb794570_1
   - hdf5=1.10.2=hc401514_1
+  - intervaltree=2.1.0
   - matplotlib=2.2.3=py27h8e2386c_0
   - networkx=1.11=py27_0
   - pip=18.0=py27_1
