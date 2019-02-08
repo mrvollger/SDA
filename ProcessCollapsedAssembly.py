@@ -899,6 +899,9 @@ rule GenerateBatchRunScript:
 		regions="LocalAssemblies/regions.txt",
 	output:
 		array = "LocalAssemblies/RunAssembliesByArray.sh",
+	params:
+		mem='1G',
+		cores=1,
 	run:
 		path = os.getcwd()
 		numJobs = len( open( input["regions"]).readlines() )	
