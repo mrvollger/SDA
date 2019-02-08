@@ -34,7 +34,7 @@ envs/python3.done:
 	   	touch envs/python3.done
 
 #
-# Make the test case
+# Make the test cases
 #
 TestCases/SDAtest/ref.fasta:
 	rm -rf TestCases/SDAtest* 
@@ -44,12 +44,23 @@ TestCases/SDAtest/ref.fasta:
 	tar -zxvf SDAtest.tar.gz && \
 	tar -zxvf SDAtest2.tar.gz 
 
+#
+# Make the fake genome test case
+#
+TestCases/GenomeTest/ref.fasta:
+	rm -rf TestCases/GenomeTest* 
+	cd TestCases/ && \
+	wget https://eichlerlab.gs.washington.edu/help/mvollger/SDA/GenomeTest.tar.gz && \
+	tar -zxvf GenomeTest.tar.gz
+
 clean: 
 	source env_conda.cfg && \
 	conda remove -y --prefix $(PWD)/envs/sda-python-3 --all ; \
 	conda remove -y --prefix $(PWD)/envs/sda-python-2 --all ; \
 	rm -f envs/python2.done envs/python3.done ; \
 	rm -rf TestCases/SDAtest* ; \
+	rm -rf TestCases/GenomeTest* ; \
 	rm -f externalRepos/pbgreedyphase/readToSNVList ; \
 	rm -f scripts/readToSNVList
+
 
