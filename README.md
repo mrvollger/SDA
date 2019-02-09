@@ -88,8 +88,9 @@ These are fasta files containing the sequences for each paralog as determined by
 
 For a visualization of the correlation clustering results see `CC/mi.cuts.gml.pdf`
 
-## Test case: ##
+## Test cases: ##
 There is a test case created by the make file in `TestCases/SDAtest`. Please test SDA on this before testing your own data (Note quiver will not run on this test case). 
+A second test case in `TestCases/SDAtest2` will run quiver/arrow without error. 
 
 
 
@@ -100,10 +101,10 @@ undefined symbol: FT_Done_MM_Var
 ```
 If you get this error we recommend re-installing `openjdk` as this has resolved the issue for others. 
 ```
-source activate sda-python-3 
+source env_python3.cfg 
 conda uninstall openjdk
 conda install openjdk
-conda install -c bioconda canu=1.5 
+conda install -c bioconda canu=1.8
 ```
 
 
@@ -118,6 +119,8 @@ module load perl/5.14.2
 module load RepeatMasker/3.3.0
 ```
 This process can be started by executing using this script `ProcessCollapsedAssembly.snake.sh` once the required input is in place. 
+If you do not have a sungrid engine you will have to modify `ProcessCollapsedAssembly.snake.sh` to work on your cluster. 
+
 
 ## Required input: ##
 This process only has one required input and that is a config file called `denovo.setup.config.json` which must be placed in a directory called config (`config/denovo.setup.config.json`).  An example of the `denovo.setup.config.json` file is shown below:
@@ -125,13 +128,17 @@ This process only has one required input and that is a config file called `denov
 {	
 	"asm" : "NA19240.fasta", # The denovo assembly to examine.
 	"reads" : "reads.fofn", # A file of file names (FOFN) containing all the reads used in denovo assembly.
-	"reference " :  "~mvollger/assemblies/hg38/ucsc.hg38.no_alts.fasta", # a path to a local download of UCSC’s hg38. 
-        "genes" : "/net/eichler/vol2/home/mvollger/assemblies/hg38/hg38.gene.locations.bed",
 	"project" : "NA19240", # A project identifier, can be anything (no spaces). 
-    	"read_files_per_job" : 10  # the number of read files to submit to blasr at once. I recommend less than 15. 
+    "read_files_per_job" : 2  # the number of read files to submit to blasr at once. I recommend less than 15GB of data per job.
 }
 ```
 Once again `"ont" : "True"` can be added for use with ONT data. 
+Additionally `"pbmm2" : "Ture"` can be added to use pbmm2 instead of blasr for alignments. 
+
+There is a test case for this snakemake but it is rather large, 20Gb of data. To download it execute the following:
+```
+make TestCases/GenomeTest/ref.fasta
+```
 
 ### Please Cite ###
 Vollger, M. R. et al. Long-read sequence and assembly of segmental duplications. Nature Methods (2018). doi:10.1038/s41592-018-0236-3
