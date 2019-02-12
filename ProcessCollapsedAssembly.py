@@ -19,8 +19,13 @@ RMenv = snake_dir + "env_RM.cfg"
 
 configFileName = "config/denovo.setup.config.json"
 configfile: configFileName
-
 reference = config["asm"]
+
+RM_DB = "human"
+if("species" in config): 
+	RM_DB = config["species"].lower()
+else:
+	print('No "species" defined in the config for RepeatMasker, assuming {}.'.format(RM_DB) )
 
 
 localrules: all, StartFofn, ConditionalOuts
@@ -81,7 +86,7 @@ rule splitRef:
 #
 #
 #
-rule RepeateMasker:
+rule RepeatMasker:
 	input:
 		split = "reference/split/ref.{idx}.fasta"
 	output:
@@ -94,7 +99,7 @@ rule RepeateMasker:
 source {RMenv}
 dir=reference/mask{wildcards.idx}
 RepeatMasker \
-	-species human \
+	-species {RM_DB} \
 	-e wublast \
 	-dir $dir \
 	-pa {threads} \
@@ -105,7 +110,7 @@ RepeatMasker \
 #
 #
 #
-rule mergeRepeateMasker:
+rule mergeRepeatMasker:
 	input:
 		split = expand("reference/mask{idx}/ref.{idx}.fasta.out", idx = range(0,splitSize))
 	output:
@@ -121,7 +126,7 @@ rule mergeRepeateMasker:
 #
 #
 #
-rule RepeateMaskerBed:
+rule RepeatMaskerBed:
 	input:
 		RMout = "reference/ref.RM.out",
 	output:

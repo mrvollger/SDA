@@ -132,6 +132,8 @@ This process only has one required input and that is a config file called `denov
     "read_files_per_job" : 2  # the number of read files to submit to blasr at once. I recommend less than 15GB of data per job.
 }
 ```
+If you are running the pipeline on non-human data/assembly you should specify the `"species" : "your_species"`. `"your_species"` will be passed to RepeatMasker, thus it must be a vialid database for RepeatMasker. 
+
 Once again `"ont" : "True"` can be added for use with ONT data. 
 Additionally `"pbmm2" : "Ture"` can be added to use pbmm2 instead of blasr for alignments. 
 
