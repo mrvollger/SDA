@@ -59,7 +59,7 @@ rule splitRef:
 	input:
 		ref=config["asm"]
 	output:
-		split = expand("reference/split/ref.{idx}.fasta", idx=range(0, splitSize) ),
+		split = temp( expand("reference/split/ref.{idx}.fasta", idx=range(0, splitSize) ) ),
 		readme = "reference/README.txt",
 	params:
 		mem="16G",
@@ -90,7 +90,7 @@ rule RepeatMasker:
 	input:
 		split = "reference/split/ref.{idx}.fasta"
 	output:
-		RMout = "reference/mask{idx}/ref.{idx}.fasta.out"
+		RMout = temp("reference/mask{idx}/ref.{idx}.fasta.out"),
 	params:
 		mem="8G",
 		cores=8,
@@ -114,7 +114,7 @@ rule mergeRepeatMasker:
 	input:
 		split = expand("reference/mask{idx}/ref.{idx}.fasta.out", idx = range(0,splitSize))
 	output:
-		RMout = "reference/ref.RM.out",
+		RMout = temp("reference/ref.RM.out"),
 	params:
 		mem="8G",
 		cores=1,
@@ -130,7 +130,7 @@ rule RepeatMaskerBed:
 	input:
 		RMout = "reference/ref.RM.out",
 	output:
-		RM = "reference/ref.RM.out.bed",
+		RM = temp("reference/ref.RM.out.bed"),
 	params:
 		mem="8G",
 		cores=1,
@@ -234,7 +234,7 @@ if(ISPB and not PBMM):
 		input:
 			asm=reference,
 		output:
-			asmsa="reference/denovo.sa",
+			asmsa=temp("reference/denovo.sa"),
 		params:
 			mem="16G",
 			cores=1,
@@ -274,7 +274,7 @@ elif(PBMM):
 		input:
 			reference,
 		output:
-			mmi="reference/denovo.mmi",
+			mmi=temp("reference/denovo.mmi"),
 		params:
 			mem="16G",
 			cores=1,
@@ -307,7 +307,7 @@ else: # the reads are ont or not foramted like pb
 		input:
 			reference,
 		output:
-			mmi="reference/denovo.mmi",
+			mmi=temp("reference/denovo.mmi"),
 		params:
 			mem="16G",
 			cores=1,
@@ -381,8 +381,8 @@ rule FaiToBed:
 	input:
 		asmfai=reference + ".fai",
 	output:
-		regions="coverage/regions.100.bed",
-		regions1k="coverage/regions.1000.bed",
+		regions=temp("coverage/regions.100.bed"),
+		regions1k=temp("coverage/regions.1000.bed"),
 	params:
 		mem="2G",
 		cores=1,
