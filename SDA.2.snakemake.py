@@ -197,8 +197,7 @@ if [ -s {input} ]; then
 			corMinCoverage=1 \
 			-p asm useGrid=false  \
 			-d $PREFIX \
-			maxThreads={threads} cnsThreads={threads} ovlThreads={threads} \
-			mhapThreads={threads} \
+			maxThreads={threads} \
 			contigFilter="{MINREADS} $MINLENGTH 1.0 .75 {MINREADS}" \
 			|| ( >&2 echo " no real assembly" && \
 			> {output} )

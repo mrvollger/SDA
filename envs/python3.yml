@@ -9,7 +9,7 @@ dependencies:
   - bedtools=2.27.1=he941832_2
   - biopython=1.70=np112py36_1
   - blasr=5.3.2=hac9d22c_4
-  - canu=1.8=pl526h470a237_0  
+  - canu=1.7
   - miniasm=0.3_r179=ha92aebf_0
   - minimap2=2.15=ha92aebf_0
   - pysam=0.15.2
