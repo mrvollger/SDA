@@ -31,7 +31,7 @@ print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 rule all:	
 	input:
 		pdf='CC/mi.cuts.gml.pdf',
-		groups=dynamic("group.{n}.vcf"),
+		done = "CC/vcfs.done",
 		png="Coverage.png",
 		depth="snvs/depth.tsv",
 
@@ -456,7 +456,8 @@ rule makeCutsInPSVgraph:
 		snvsPos="snvs/assembly.consensus.fragments.snv.pos",
 		vcf="snvs/assembly.consensus.nucfreq.vcf"	
 	output:
-		vcfs=dynamic("group.{n}.vcf"), 
+		#vcfs=dynamic("group.{n}.vcf"), # this caused a snakemake effore often because dynamic is depricated 
+		done = "CC/vcfs.done",
 	params:
 		comps="CC/mi.comps.txt", 
 	shell:
@@ -466,6 +467,7 @@ rule makeCutsInPSVgraph:
 				--minComponent 4 \
 				--ref {input.refIdx} \
 				--summary {params.comps}
+		touch {output.done}
 		"""
 
 
