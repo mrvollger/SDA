@@ -21,17 +21,17 @@ def makeHeader():
 	rtn += "{}\t{}\t{}\t{}\t".format("query_name", "query_start", "query_end", "query_length" )
 	rtn += "{}\t{}\t{}\t".format("reference_name", "reference_start", "reference_end" )
 	rtn += "{}\t{}\t{}\t".format("perID_by_matches", "perID_by_events", "perID_by_all")
-	rtn += "{}\t{}\t{}\t{}\t{}\t{}".format("matches", "missmatches", 
+	rtn += "{}\t{}\t{}\t{}\t{}\t{}".format("matches", "mismatches", 
 			"insertions", "deletions", "insertion_events", "deletion_events")
 	return(rtn)
 
-def perId(matches, missmatch, ins, dele, insEvent, delEvent):
-	if( (matches + missmatch) == 0):
+def perId(matches, mismatch, ins, dele, insEvent, delEvent):
+	if( (matches + mismatch) == 0):
 		return((0,0,0))
 
-	bymatches = (100.0 * matches)/(matches + missmatch)
-	byevents = (100.0 * matches)/(matches + missmatch + insEvent + delEvent)
-	byall = (100.0 * matches)/(matches + missmatch + ins + dele)
+	bymatches = (100.0 * matches)/(matches + mismatch)
+	byevents = (100.0 * matches)/(matches + mismatch + insEvent + delEvent)
+	byall = (100.0 * matches)/(matches + mismatch + ins + dele)
 	return((bymatches, byevents, byall))
 
 
@@ -78,21 +78,21 @@ def formatRead(read):
 			insEvent = len(match)
 			ins = sum(match)
 
-		missmatch = cs.count("*")
+		mismatch = cs.count("*")
 		#print(cs)
 	else:
 		counts, events = read.get_cigar_stats()
 		matches = counts[7]
-		missmatch = counts[8]
+		mismatch = counts[8]
 		ins = counts[1]
 		dele = counts[2]
 		insEvent = events[1]
 		delEvent = events[2]
 	
 
-	bymatches, byevents, byall = perId(matches, missmatch, ins, dele, insEvent, delEvent)
+	bymatches, byevents, byall = perId(matches, mismatch, ins, dele, insEvent, delEvent)
 	rtn += "{}\t{}\t{}\t".format(bymatches, byevents, byall )
-	rtn += "{}\t{}\t{}\t{}\t{}\t{}\n".format(matches, missmatch, ins, dele, insEvent, delEvent )
+	rtn += "{}\t{}\t{}\t{}\t{}\t{}\n".format(matches, mismatch, ins, dele, insEvent, delEvent )
 	return(rtn)
 
 
