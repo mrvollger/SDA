@@ -50,16 +50,26 @@ for group in groups:
     assert group[0]=="group"
     IDS.append(group[1])
 
+# exit if there are no CC groups 
+if(len(IDS)==0):
+	print("SDA2 FAILED: No CC groups to assemble!")
+	exit(0)
 
 assemblers = ["canu", "wtdbg", "miniasm"]
 if("assembler" in config):
 	if(config["assembler"].lower() in assemblers):
 		assemblers = [ config["assembler"].lower() ]
 
+
+
+onsuccess:
+	print("SDA2 FINISHED: Converted clusters into assemblies.")
+onerror:
+	print("SDA2 FAILED: Clusters not converted into assemblies.")
+
 rule all:
 	input: "final",
 	message: "Running SDA.2"
-
 
 
 # global wild card constraint on n whihc is the group idenitifier

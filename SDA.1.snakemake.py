@@ -28,12 +28,20 @@ python2 = snake_dir + "env_python2.cfg"
 print(snake_dir)
 print("MINCOV:{}\nMAXCOV:{}\nMINTOTAL:{}".format(MINCOV, MAXCOV, MINTOTAL))
 
+
+
+onsuccess:
+	print("SDA1 FINISHED: CC finished and created group.*.vcf")
+onerror:
+	print("SDA1 FAILED: Unable to create groups of phased PSVs.")
+
+
 rule all:	
 	input:
 		pdf='CC/mi.cuts.gml.pdf',
 		done = "CC/vcfs.done",
 		png="Coverage.png",
-		depth="snvs/depth.tsv",
+		png2="CovWithCC.png",
 
 #
 # This realigns reads with match/mismatch parameters that make it more
@@ -69,7 +77,7 @@ if(os.path.exists("reads.orig.bam") and ISPB and not MM2):
 			reads = 'reads.orig.bam',
 			ref='ref.fasta',
 		output:
-			"reads.bam"
+			temp("reads.bam")
 		threads:
 			8
 		shell: """
@@ -85,8 +93,6 @@ blasr {input.reads} {input.ref} \
 	--minMatch 13 | \
 	 samtools view -bS -F 4 - | \
 	 samtools sort -m 4G -T tmp -o {output}
-
-samtools index {output}
 
 samtools view {output} > tmp.sam
 
@@ -106,7 +112,7 @@ elif(os.path.exists("reads.orig.bam") and (ISONT or MM2)):
 			reads='reads.orig.bam', 
 			ref='ref.fasta'
 		output:
-			"reads.bam"
+			temp("reads.bam")
 		threads: 8
 		shell:"""
 source {python3}
@@ -133,7 +139,6 @@ samtools fastq {input.reads} | \
 # actually i think I will allow chimeric, (allows jumps of large gaps)
 # -A matching score -B mismatching score -E gap extenshion penalty 
 
-samtools index {output}
 """
 
 
@@ -145,37 +150,32 @@ else:
 
 rule index_realigned_reads:
 	input:
-		"reads.bam"		
+		"reads.bam"
 	output:
-		bai = "reads.bam.bai",
+		bai = temp("reads.bam.bai"),
 	shell:
 		'samtools index {input}'	
 
-#
-# get fasta from bam
-#
-rule reads_to_fasta:
-    input:
-        "reads.bam"
-    output:
-        "reads.fasta"
-    shell:
-        '''samtools view {input} | awk '{{ print ">"$1; print $10; }}' > {output}'''
-
 
 
 #
-# get a depth profile and reads in a fasta format
+# this adds an index to each read name, make it so it works with WhatsHap
+# It also adss a tlen that is the length of the alignment to the reference
+# this is to mimic what balsr would have done 
+# in addition it adds a SM tag to each read, this is for WhatsHap
 #
-rule depthFromBam:
-    input:
-        bam="reads.bam",
-    output:
-        depth="snvs/depth.tsv"
-    shell:
-        """
-        samtools depth -aa {input.bam} > {output.depth}
-        """
+rule AddIndextoReads:
+	input:
+		reads = "reads.bam",
+		bai = "reads.bam.bai",
+	output:
+		reads = "reads.sample.bam",
+		bai = "reads.sample.bam.bai",
+	shell:"""
+source {python3}
+{base}/changeBamName.py {input.reads} {output.reads}
+samtools index {output.reads}
+"""
 
 
 
@@ -185,8 +185,8 @@ rule depthFromBam:
 #
 rule hetProfile:
 	input:
-		reads="reads.bam",
-		bai = "reads.bam.bai",
+		reads="reads.sample.bam",
+		bai = "reads.sample.bam.bai",
 		ref="ref.fasta"	,
 	output: 
 		nucfreq="snvs/nofilter.consensus.nucfreq",
@@ -218,8 +218,8 @@ rule thresholdProfile:
 #
 rule create_nucfreq_from_reads:
 	input:
-		reads="reads.bam",
-		bai = "reads.bam.bai",
+		reads="reads.sample.bam",
+		bai = "reads.sample.bam.bai",
 		ref="ref.fasta",
 	output:
 		nucfreq="snvs/assembly.consensus.nucfreq",
@@ -231,30 +231,16 @@ samtools mpileup -q 0 -Q 0 {input.reads} | \
 	--maxCount {MINCOV} \
 	--minTotal {MINTOTAL} \
 	> {output.nucfreq}
+
+
+if [ -s {output.nucfreq} ]; then
+	echo "Candidate PSVs found!"
+else
+	>&2 echo "ERROR: NO candidate PSVS were found. SDA cannot resolve this duplication."
+	rm {output}
+	exit 1
+fi
 """
-
-
-
-#
-# this adds an index to each read name, make it so it works with WhatsHap
-# It also adss a tlen that is the length of the alignment to the reference
-# this is to mimic what balsr would have done 
-# in addition it adds a SM tag to each read, this is for WhatsHap
-#
-rule AddIndextoReads:
-	input:
-		reads = "reads.bam",
-		bai = "reads.bam.bai",
-	output:
-		reads = "reads.sample.bam",
-		bai = "reads.sample.bam.bai",
-	shell:
-		"""
-		source {python3}
-		{base}/changeBamName.py {input.reads} {output.reads}
-		samtools index {output.reads}
-		"""
-
 
 
 rule create_SNVtable_from_reads:
@@ -308,8 +294,9 @@ rule SNVtable_to_SNVmatrix:
     output:
         mat="snvs/assembly.consensus.fragments.snv.mat",
         snvsPos="snvs/assembly.consensus.fragments.snv.pos"
-    shell:
-       '{scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvsPos} --mat {output.mat}'  
+    shell:"""
+{scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvsPos} --mat {output.mat}
+"""
 
 
 #
@@ -318,7 +305,7 @@ rule SNVtable_to_SNVmatrix:
 if( os.path.exists("duplications.fasta") and os.path.getsize("duplications.fasta") > 0 ):
 	rule depthOnDuplications:
 		input:
-			reads="reads.bam",
+			reads="reads.sample.bam",
 			ref = ancient( "duplications.fasta" ),
 		output:
 			bam = "dup/reads.dup.bam",
@@ -370,12 +357,12 @@ rule createPSVgraph:
 		graph="CC/mi.gml",
 		adj="CC/mi.adj",
 		mi="CC/mi.mi",
-	shell:
-		"""
-		{scriptsDir}/PairedSNVs.py {input.matrix} --minCov {MINCOV} --maxCov {MAXCOV} \
-				--mi {output.mi} --graph {output.graph} --adj {output.adj} \
-				--minNShared 5 --minLRT {MINLRT} --vcf {input.vcf}
-		"""
+	shell:"""
+{scriptsDir}/PairedSNVs.py {input.matrix} --minCov {MINCOV} --maxCov {MAXCOV} \
+		--mi {output.mi} --graph {output.graph} --adj {output.adj} \
+		--minNShared 5 --minLRT {MINLRT} --vcf {input.vcf}
+
+"""
 
 
 #
@@ -387,10 +374,9 @@ rule GenerateRepulsion:
 		mi="CC/mi.mi",
 	output:
 		rep = "CC/mi.repulsion",
-	shell:
-		"""
-		{base}/GenerateRepulsion.py --shared 5 --lrt {MINLRT} --max 3 --gml {input.graph} --mi {input.mi} --out {output.rep}
-		"""
+	shell:"""
+{base}/GenerateRepulsion.py --shared 5 --lrt {MINLRT} --max 3 --gml {input.graph} --mi {input.mi} --out {output.rep}
+"""
 
 runIters = True
 runIters = False
@@ -416,22 +402,30 @@ rule correlationClustering:
 		out="CC/mi.cuts.gml",
 		sites="CC/mi.gml.sites",
 		cuts="CC/mi.gml.cuts",
-	shell:
-		"""	
-		mkdir -p extraCCplots
-		rm -rf extraCCplots/*
+	shell:"""	
+mkdir -p extraCCplots
+rm -rf extraCCplots/*
 
-		{scriptsDir}/MinDisagreeClusterByComponent.py  \
-			--graph {input.graph} \
-			--repulsion {input.rep} \
-			--niter 10000 --swap 1000000 --factor 1 \
-			--plotRepulsion {showIters} \
-			--cuts {output.cuts} --sites {output.sites} --out {output.out}
-	
-		# it running all iteraitons convert them into a booklet
-		{convert}
-		
-		"""
+{scriptsDir}/MinDisagreeClusterByComponent.py  \
+	--graph {input.graph} \
+	--repulsion {input.rep} \
+	--niter 10000 --swap 1000000 --factor 1 \
+	--plotRepulsion {showIters} \
+	--cuts {output.cuts} --sites {output.sites} --out {output.out}
+
+if [ -s {output.sites} ]; then
+	echo "CC groups created!"
+else
+	>&2 echo "ERROR: No CC groups were made. SDA found no clusters of PSVs and cannot resolve this duplication."
+	rm {output}
+	exit 1
+fi
+
+
+# it running all iteraitons convert them into a booklet
+{convert}
+
+"""
 
 
 
@@ -497,12 +491,11 @@ rule DepthProfileWithCC:
 		nucfreq="snvs/nofilter.consensus.nucfreq",
 		sites="CC/mi.gml.sites",
 	output: 
-		png="DepthWithCC.png",
-	shell:
-		"""
-		source {python3}
-		{base}autoThreshold.py --nucfreq {input.nucfreq} --psvsites {input.sites} --plot {output.png} 
-		"""
+		png="CovWithCC.png",
+	shell:"""
+source {python3}
+{base}autoThreshold.py --nucfreq {input.nucfreq} --psvsites {input.sites} --plot {output.png} 
+"""
 
 
 
