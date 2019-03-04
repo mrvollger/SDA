@@ -658,6 +658,13 @@ rule MergeBedForCollapses:
 		# write unfiltered to file
 		merged.to_csv(output["unf"], header=False, index=False, sep="\t" )
 
+
+
+# the miniumum size of collapse in order to set it up for SDA
+MINLEN = 15000
+if("MinCollapseLength" in config):
+	MINLEN = config["MinCollapseLength"]
+
 rule FilterCollapses:
 	input:
 		unf = rules.MergeBedForCollapses.output.unf, 
@@ -671,7 +678,7 @@ rule FilterCollapses:
 	run:
 		collapses = pd.read_csv(input["unf"], sep = "\t", header=None, 
 				names=['contig', 'start', 'end', "notR", 'coverage', "RC", "length", "contigl", "distToEnd"])
-		minsize = 15000
+		minsize = MINLEN
 		maxRC = 75
 		
 		# apply filter
