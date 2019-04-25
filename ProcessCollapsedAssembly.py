@@ -30,6 +30,9 @@ else:
 
 localrules: all, StartFofn, ConditionalOuts
 
+report: "report/workflow.rst"
+
+
 rule all:
 	input:
 		one="coverage/all.stats.txt",
@@ -47,17 +50,40 @@ DIRS = "reference fofns coverage LocalAssemblies alignments"
 
 
 #
-# geting ready to run TRF and RM by splitting up the genome into 10 parts to run seperatly 
+# geting ready to run TRF and RM by splitting up the genome into multiple parts to run seperatly 
 #
 splitSize = 20 
-recs = list(SeqIO.parse( config["asm"], "fasta"))
-if(splitSize > len(recs)):
-	splitSize = len(recs)
+FAI = config["asm"] + ".fai"
+if(os.path.exists(FAI)):
+	recs = open(FAI).readlines()
+	if(splitSize > len(recs)):
+		splitSize = len(recs)
+else:
+	recs = list(SeqIO.parse( config["asm"], "fasta"))
+	if(splitSize > len(recs)):
+		splitSize = len(recs)
+
+#
+# make an index for the masked assembly  
+#
+rule IndexASM:
+	input:
+		ref=reference,
+	output:	
+		fai=reference + ".fai",
+	params:
+		mem="8G",
+		cores=1,
+	shell:"""
+samtools faidx {input.ref}
+"""
+
 
 
 rule splitRef:
 	input:
-		ref=config["asm"]
+		ref=reference,
+		fai=ancient(FAI),
 	output:
 		split = temp( expand("reference/split/ref.{idx}.fasta", idx=range(0, splitSize) ) ),
 		readme = "reference/README.txt",
@@ -156,23 +182,10 @@ rule mergeTRFandRM:
 cat {input} | sort -k1,1 -k2,2n | bedtools merge -i - > {output.allR}
 """
 
-#
-# make an index for the masked assembly  
-#
-rule IndexASM:
-	input:
-		ref=reference,
-	output:	
-		fai=reference + ".fai",
-	params:
-		mem="8G",
-		cores=1,
-	shell:"""
-samtools faidx {input.ref}
-"""
-
 rule StartFofn:
-	input: config["reads"]
+	input: 
+		reads = config["reads"], 
+		fai=ancient(FAI),
 	output:
 		start = "fofns/startFofn"
 	shell:
@@ -222,9 +235,15 @@ ISPB=True; PBMM=False
 if( "ont" in config ):
 	if(config["ont"].lower() in  ["t", "true"]):
 		ISPB=False
+
 if( "pbmm2" in config ):
 	if(config["pbmm2"].lower() in  ["t", "true"]):
 		PBMM = True 
+		DATATYPE = "SUBREAD"
+	if("CCS" in config):
+		if(config["CCS"].lower() in  ["t", "true"]):
+			DATATYPE = "CCS"
+		
 
 if(ISPB and not PBMM):
 	#
@@ -239,7 +258,7 @@ if(ISPB and not PBMM):
 			mem="16G",
 			cores=1,
 		shell:
-			"sawriter {input.asm}"
+			"sawriter {output.asmsa} {input.asm}"
 	#
 	# Map reads using blasr 
 	#
@@ -276,10 +295,10 @@ elif(PBMM):
 		output:
 			mmi=temp("reference/denovo.mmi"),
 		params:
-			mem="16G",
-			cores=1,
+			mem="8G",
+			cores=4,
 		shell:"""
-pbmm2 index {input} {output}
+pbmm2 index --preset {DATATYPE} -j {params.cores} {input} {output}
 """
 	
 	rule MapReads:
@@ -295,9 +314,10 @@ pbmm2 index {input} {output}
 		threads: 8
 		shell: """ 
 pbmm2 align \
+	--preset {DATATYPE} \
 	-r 50000 \
 	-j {threads} \
-	{input.mmi} {input.fofn} | \
+	{input.mmi} {input.fofn}  | \
 	samtools view -bS -F 2308 - | \
 	samtools sort -@ {threads} -m 2G -o {output.align} 
 """
@@ -378,7 +398,7 @@ bedtools bamtobed -i {input.bam} | bedtools sort -i - > {output.bed}
 # these will be the feautes upon which we calculate depth wtih bedtools
 #
 rule FaiToBed:
-	input:
+	input:	
 		asmfai=reference + ".fai",
 	output:
 		regions=temp("coverage/regions.100.bed"),
@@ -505,8 +525,7 @@ rule GenerateMinAndMax:
 		# mincov = int( stats.iloc[0]["mean_coverage"] - 3*stats.iloc[0]["std_coverage"] )
 		mincov = int(stats.iloc[0]["mean_coverage"]/2.0)
 		
-		out2 = '{{\n\t"MINCOV" : {},\n\t"MAXCOV" : {},\n\t"MINTOTAL" : {},\n\t"project" : \"{}\"\n}}\n'.format(
-				mincov, maxcov, mintotal, config["project"])
+		out2 = '{{\n\t"MINCOV" : {},\n\t"MAXCOV" : {},\n\t"MINTOTAL" : {},\n\t"project" : \"{}\"\n}}\n'.format(mincov, maxcov, mintotal, config["project"])
 		open(output["json"], "w+").write(out2)
 
 #
@@ -551,8 +570,7 @@ rule BedForCollapses:
 		mem='16G',
 		cores=1,
 	run:
-		bed = pd.read_csv(input["combined"], sep = "\t", header=None, 
-				names=['contig', 'start', 'end', 'coverage', "repeatCount"])
+		bed = pd.read_csv(input["combined"], sep = "\t", header=None, names=['contig', 'start', 'end', 'coverage', "repeatCount"])
 
 		# change repete content to a percentage
 		bed["repeatCount"] = 100 * bed["repeatCount"] / ( bed["end"] - bed["start"] )
@@ -693,6 +711,26 @@ rule FilterCollapses:
 		#shell(cmd)
 
 
+
+
+
+
+
+
+def GetRegionInfo(collapses):
+	myfile = open(collapses)
+	rtn = []
+	for idx, line in enumerate(myfile):
+		tokens = line.strip().split()
+		chrm = tokens[0]
+		start = tokens[1]
+		end = tokens[2]
+		#curdir = "LocalAssemblies/{}.{}.{}/".format(chrm, start, end)
+		curdir = "LocalAssemblies/region_{}/".format(idx)
+		rtn.append((curdir, chrm, start, end))
+	myfile.close()
+	return(rtn)
+
 # creates a regions file that has all the regions that are collapsed
 # and creates a directory for eahc one of those regions
 #
@@ -706,26 +744,19 @@ rule LocalAssembliesRegions:
 		mem='8G',
 		cores=1,
 	run:
-		df = pd.read_csv(input["collapses"], sep="\t", header=None)
-		df["start"] = df[1]
-		df["start"] = df.start.map(int)
-		df["end"] = df[2]
-		df["end"] = df.end.map(int)
-		df["ID"] = df[0] + "." + df.start.map(str) + "." + df.end.map(str) + "/"
-		df[["ID"]].to_csv(output["regions"], header=False, index=False, sep="\t")
+		info = GetRegionInfo(input["collapses"])
+		regions = ""
+		makedirs = ""
+		for curdir, chrm, start, end in info:
+			makedirs += "mkdir -p " + curdir + " && "
+			match = re.match("LocalAssemblies/(region_\d+/)", curdir)
+			assert match is not None, curdir
+			region = match.group(1)
+			regions += region + "\n"
 		
-		# so i am going to make the collapse directories here
-		rfile = open(output["regions"])
-		dirsForShell = ""
-		for line in rfile:
-			region = "LocalAssemblies/" + line.strip()
-			dirsForShell += region + " "
-		rfile.close()
-		# remove any old directories
-		# shell('rm -rf LocalAssemblies/*.*.*')
-		# add new direcotires 
-		shell("mkdir -p " + dirsForShell)
-
+		makedirs += 'echo "done making dirs"'
+		shell(makedirs)
+		open(output["regions"], "w+").write(regions)
 
 
 
@@ -734,6 +765,9 @@ rule LocalAssembliesRegions:
 #  SETUP REQUIRED INPUT FILES FOR SDA
 #
 #-------------------------------------------------------------------------------#
+
+def created(my_path):
+	return( os.path.exists(my_path) and (os.path.getsize(my_path) > 0) )
 
 #
 # add a bed file to each region specifying where in asm they were 
@@ -748,44 +782,17 @@ rule LocalAssembliesBed:
 		mem='8G',
 		cores=1,
 	run:
-		rfile = open(input["regions"])
-		regions=[]
-		for line in rfile:
-			region = "LocalAssemblies/" + line.strip()
-			regions.append(region)
-		rfile.close()
-
-		# create reference and bed file
-		cfile = open(input["collapses"])
-		collapses = cfile.readlines()
-		cfile.close()
-		cmd = ""
-		for line, region in zip(collapses,regions):
-			line = line.split("\t")
-			tempcmd = ""
-			# for making the bed file
-			bed = "{}\t{}\t{}\n".format(line[0], int(float(line[1])), int(float(line[2])) )
-			rgn = "{}:{}-{}\n".format(line[0], int(float(line[1])), int(float(line[2])) )
-			open(region + "/orig.bed", "w+").write(bed)
-			open(region + "/orig.rgn", "w+").write(rgn)
-		
+		info = GetRegionInfo(input["collapses"])
+		for curdir, chrm, start, end in info:
+			bed = "{}\t{}\t{}\n".format(chrm, start, end )
+			rgn = "{}:{}-{}\n".format(chrm, start, end)
+			open(curdir + "orig.bed", "w+").write(bed)
+			open(curdir + "orig.rgn", "w+").write(rgn)
+			assert created(curdir + "orig.bed")
+			assert created(curdir + "orig.rgn")
 		shell("touch {output.done}")
 
-def GetRegionInfo(collapses):
-	myfile = open(collapses)
-	rtn = []
-	for line in myfile:
-		tokens = line.strip().split()
-		chrm = tokens[0]
-		start = tokens[1]
-		end = tokens[2]
-		curdir = "LocalAssemblies/{}.{}.{}/".format(chrm, start, end)
-		rtn.append((curdir, chrm, start, end))
-	myfile.close()
-	return(rtn)
 
-def created(my_path):
-	return( os.path.exists(my_path) and (os.path.getsize(my_path) > 0) )
 
 #
 # using the .rgn files make a fasta file consisting of the collapse 
@@ -804,7 +811,7 @@ rule LocalAssembliesRef:
 		info = GetRegionInfo(input["collapses"])
 		for curdir, chrm, start, end in info:
 			out = curdir + "ref.fasta"
-			shell("samtools faidx {} {}:{}-{} > {}".format(input["asm"], chrm, start, end, out))
+			shell('samtools faidx {} "{}:{}-{}" > {}'.format(input["asm"], chrm, start, end, out))
 			assert created(out)
 		shell("touch {output.refs}")
 
@@ -818,7 +825,7 @@ def getRegions():
 
 def aggrBam(wildcards):
 	regions = getRegions()
-	tmp= expand("LocalAssemblies/{region}/reads.orig,bam", region = regions) 
+	tmp= expand("LocalAssemblies/{region}/reads.orig.bam", region = regions) 
 	return(tmp)
 
 #
@@ -829,10 +836,7 @@ rule LocalAssembliesBam:
 		done="LocalAssemblies/BedAndRgn.done",
 		collapses="coverage/collapses.bed",
 		alns=expand("alignments/align.{index}.bam", index = IDXs), 
-		#bed="LocalAssemblies/{region}/orig.bed",
-		#refs="LocalAssemblies/{region}/ref.fasta",
 	output:
-		#bams="LocalAssemblies/{region}/reads.orig.bam"
 		bams = "LocalAssemblies/Bams.done"
 	params:
 		mem='24G',
@@ -844,7 +848,7 @@ rule LocalAssembliesBam:
 			prefix = curdir + "tmp." 
 			for idx, bam in enumerate(input["alns"]):
 				tmpbam = prefix + str(idx) + ".bam"
-				shell("samtools view -b {} {}:{}-{} > {}; ".format(bam, chrm, start, end, tmpbam))			
+				shell('samtools view -b {} "{}:{}-{}" > {}; '.format(bam, chrm, start, end, tmpbam))			
 				assert created(tmpbam)
 			shell("samtools merge {} {}*.bam".format(out, prefix) )
 			shell("rm {}*.bam".format(prefix) )
