@@ -7,6 +7,7 @@ channels:
 dependencies:
   - bcftools=1.9=h4da6232_0
   - biopython=1.70=np112py27_1
+  - blasr=5.3.2
   - genomicconsensus=2.3.2
   - htslib=1.7=0
   - pysam=0.14.1=py27hae42fb6_1
@@ -19,8 +20,8 @@ dependencies:
   - networkx=1.11=py27_0
   - pip=18.0=py27_1
   - python=2.7.15=h9fef7bc_0
-  - numpy=1.12.1=py27h9378851_1
-  - numpy-base=1.14.3=py27hdbf6ddf_0
+  - numpy=1.12.1
+  - numpy-base=1.14.3
   - scipy=1.1.0=py27hc49cb51_0
   - pip:
 prefix: /home/mitchell/anaconda3/envs/sda-python-2
