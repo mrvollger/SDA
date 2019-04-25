@@ -555,8 +555,11 @@ if(os.path.exists("duplications.fasta")):
 					if(line[0]=="#" or len(token) < 2 ):
 						continue
 					key = "{}_{}".format(token[0], token[1])
-					toadd = "{}\t{}\t{}\n".format(allsnvs[key], token[2], f)
-					truesnvs += toadd
+					if(key in allsnvs):
+						toadd = "{}\t{}\t{}\n".format(allsnvs[key], token[2], f)
+						truesnvs += toadd
+					else:
+						print("Warning cannot find SNV at {}".format(token[1]))
 				vcf.close()
 			open(output["snv"], "w+").write(truesnvs)
 
