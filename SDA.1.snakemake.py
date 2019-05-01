@@ -62,6 +62,11 @@ if("minimap" in config):
 	if(config["minimap"].lower() in ["t", "true"] ):
 		MM2=True
 
+HIFI=False
+if("HIFI" in config):
+	if(config["HIFI"].lower() in ["t", "true"] ):
+		HIFI=True
+
 bandwidth = 50000
 # set a minimum alignment lenght 
 # the minmum alignment length is set to be larger than a full length LINE element ~6 kbp. 
@@ -70,7 +75,7 @@ if("minaln" in config):
 	minaln = int(config["minaln"])
 minscore = int(minaln) # minimap does not have a minaln setting so I approximatie by setting a minium dynamic progrtaming score
 
-if(os.path.exists("reads.orig.bam") and ISPB and not MM2):
+if(os.path.exists("reads.orig.bam") and ISPB and not MM2 and not HIFI):
 
 	rule realign_reads:
 		input:
@@ -105,6 +110,24 @@ else
 fi
 
 """
+
+elif(os.path.exists("reads.orig.bam") and HIFI):
+	rule realign_reads:
+		input:
+			reads = 'reads.orig.bam',
+			ref='ref.fasta',
+		output:
+			temp("reads.bam")
+		threads:
+			8
+		shell: """
+pbmm2 align -j {threads} \
+	--preset CCS --min-length {minaln} -r 50000 -z 5000 \
+	{input.ref} {input.reads} | \
+	samtools view -bS -F 2308 - | \
+	samtools sort -@ {threads} -m 2G -o {output}
+"""
+
 
 elif(os.path.exists("reads.orig.bam") and (ISONT or MM2)):
 	rule realign_reads_minimap:
