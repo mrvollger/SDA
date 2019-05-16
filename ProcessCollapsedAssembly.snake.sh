@@ -15,27 +15,41 @@ O=$logDir'/snakejob_{rule}_{wildcards}_o'
 
 # run snakemake
 # the first set of line runs it on a sub grid cluster
-if [ "sungrid" == "sungrid" ]; then 
+if [ "drmma" == "drmma" ]; then 
 	snakemake -p \
 		-s $snakefile \
-		--drmaa " -P eichlerlab \
-			-q eichler-short.q \
-			-l h_rt=24:00:00  \
+		--drmaa " -l h_rt=24:00:00  \
 			-V -cwd -e $E -o $O \
 			-l mfree={params.mem} \
 			-pe serial {params.cores} \
 			-S /bin/bash" \
 		--jobs $jobNum \
 		--latency-wait $waitTime \
-		$1 $2 $3  # just a way to pass aditional arguments to snakemake, like --unlock 
+		$@  # just a way to pass aditional arguments to snakemake, like --unlock 
 
 # params.{cores,mem} goes and looks into the snakemake for the mem and cluster params and passes them as additional arguments
+
+elif type qsub 
+then 
+	echo "RUNNING ON SGE"
+
+	snakemake -p \
+		-s $snakefile \
+		--cluster " qsub -l h_rt=24:00:00  \
+			-V -cwd -e $E -o $O \
+			-l mfree={params.mem} \
+			-pe serial {params.cores} \
+			-S /bin/bash" \
+		--jobs $jobNum \
+		--latency-wait $waitTime \
+		$@   
+
 
 else
 	snakemake -p \
 		-s $snakefile \
 		--jobs $(nproc) \
-		 $1 $2 $3
+		 $@
 fi 
 
 
