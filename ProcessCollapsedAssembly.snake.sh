@@ -15,7 +15,7 @@ O=$logDir'/snakejob_{rule}_{wildcards}_o'
 
 # run snakemake
 # the first set of line runs it on a sub grid cluster
-if [ "drmma" == "drmma" ]; then 
+if [ "drmmax" == "drmma" ]; then 
 	snakemake -p \
 		-s $snakefile \
 		--drmaa " -l h_rt=24:00:00  \
