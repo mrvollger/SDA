@@ -104,7 +104,7 @@ If you get this error we recommend re-installing `openjdk` as this has resolved 
 source env_python3.cfg 
 conda uninstall openjdk
 conda install openjdk
-conda install -c bioconda canu=1.8
+conda install -c bioconda canu=1.7
 ```
 
 
