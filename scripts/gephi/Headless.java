@@ -65,9 +65,9 @@ public class Headless
 
     public static void main(String[] args) {
 
-		// read in file name if provided
 		String myfile = "mi.cuts.gml";	
-		String outfile = "mi.cuts.gml";	// prefix for output file
+		String outfile = "mi.cuts.gml.pdf";	// the output file
+		// read in file name if provided
 		if( args.length >= 2 ){
 			myfile = args[0];
 			outfile = args[1];
@@ -233,7 +233,7 @@ public class Headless
 		//Export
 		ExportController ec = Lookup.getDefault().lookup(ExportController.class);
 		try {
-			ec.exportFile(new File(outfile + ".pdf"));
+			ec.exportFile(new File(outfile));
 			System.out.println("Export Happened");
 		} catch (IOException ex) {
 			ex.printStackTrace();
@@ -248,7 +248,7 @@ public class Headless
 		ExportController ec2 = Lookup.getDefault().lookup(ExportController.class);
 		ExporterGML gml = (ExporterGML) ec2.getExporter(".gml");
 		try {
-			ec2.exportFile(new File("extraCCplots/cc.positions.gml"), gml);
+			ec2.exportFile(new File( outfile + ".cc.positions.gml"), gml);
 			System.out.println("Export of gml Happened");
 		} catch (IOException ex) {
 			ex.printStackTrace();
@@ -266,7 +266,7 @@ public class Headless
 		// no edges plot
 		ExportController ecnone = Lookup.getDefault().lookup(ExportController.class);
 		try {
-			ecnone.exportFile(new File( "extraCCplots/" + outfile + ".noEdges.pdf"));
+			ecnone.exportFile(new File(  outfile + ".noEdges.pdf"));
 			System.out.println("Export Happened of just nodes happened");
 		} catch (IOException ex) {
 			ex.printStackTrace();
@@ -279,7 +279,7 @@ public class Headless
 		// negative edges
 		ExportController ec3 = Lookup.getDefault().lookup(ExportController.class);
 		try {
-			ec3.exportFile(new File( "extraCCplots/" + outfile + ".negative.pdf"));
+			ec3.exportFile(new File(  outfile + ".negative.pdf"));
 			System.out.println("Export Happened of negative edges happened");
 		} catch (IOException ex) {
 			ex.printStackTrace();
@@ -340,7 +340,7 @@ public class Headless
 			// export subset of graph
 			ExportController ecPart = Lookup.getDefault().lookup(ExportController.class);
 			try {
-				ecPart.exportFile(new File("extraCCplots/" + outfile + ".negative." + CCID.toString() + ".NumNegE." + numNeg.toString()+".pdf"));
+				ecPart.exportFile(new File(  outfile + ".negative." + CCID.toString() + ".NumNegE." + numNeg.toString()+".pdf"));
 				System.out.println("Export Happened of negative edges happened");
 			} catch (IOException ex) {
 				ex.printStackTrace();

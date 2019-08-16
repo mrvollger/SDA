@@ -497,11 +497,7 @@ rule gephi:
 	output:
 		pdf="CC/mi.cuts.gml.pdf",
 	run:
-		shell("mkdir -p extraCCplots")
-		shell("source {python3}; {base}/gephi/gephi.sh {input.cuts} mi.cuts.gml" )
-		shell("mv mi.cuts.gml.pdf {output.pdf}")
-		collapse = os.path.basename(os.getcwd()) + ".pdf"
-		shell("cp " + output["pdf"] + " " + collapse)
+		shell("source {python3}; {base}/gephi/gephi.sh {input.cuts} {output.pdf}" )
 
 
 
