@@ -706,8 +706,8 @@ starts = args.starts
 scores = {}
 scoreVals = []
 for idx in range(starts):
-	# mrv note: the 4 means the compenent must have at least 4 nodes
-	components = ABPUtils.GetComponents(g,4)
+	# mrv note: means the compenent must have at least args.minCutSize nodes
+	components = ABPUtils.GetComponents(g, args.minCutSize)
 	repulsionTotal = {}
 	totalScore = 0
 	allCuts = []
