@@ -44,7 +44,7 @@ for idx,read in enumerate(bam1.fetch(until_eof=True)):
 	# remove quality values because if they are low then whathap doesnt work
 	#
 	#print(read.query_alignment_qualities)
-	read.query_qualities = None
+	#read.query_qualities = None
 	
 	if(read.query_name not in seen):
 		outbam.write(read)
