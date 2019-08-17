@@ -1,7 +1,9 @@
 all: scripts/readToSNVList \
 	envs/python2.done \
 	envs/python3.done \
-	TestCases/SDAtest/ref.fasta
+	TestCases/SDAtest/ref.fasta \
+	externalRepos/racon-v1.4.5/build/bin/racon \
+	externalRepos/canu-1.8/Linux-amd64/bin/canu
 
 SHELL := /bin/bash
 
@@ -10,28 +12,50 @@ SHELL := /bin/bash
 # Get readToSNVList
 #
 externalRepos/pbgreedyphase/readToSNVList:
-	source env_conda.cfg && \
+	source env_conda.sh && \
 		cd externalRepos/pbgreedyphase && \
 		make readToSNVList
 
 scripts/readToSNVList: externalRepos/pbgreedyphase/readToSNVList
-	source env_conda.cfg && \
+	source env_conda.sh && \
 		cp externalRepos/pbgreedyphase/readToSNVList scripts/readToSNVList
 
 #
 # make conda envs
 #
 envs/python2.done: 
-	source env_conda.cfg && \
+	source env_conda.sh && \
 		mkdir -p envs && \
 	   	conda env create --force -f envs/python2.yml --prefix $(PWD)/envs/sda-python-2 && \
 	   	touch envs/python2.done
 
 envs/python3.done:
-	source env_conda.cfg && \
+	source env_conda.sh && \
 		mkdir -p envs && \
 	   	conda env create --force -f envs/python3.yml --prefix $(PWD)/envs/sda-python-3 && \
 	   	touch envs/python3.done
+
+
+#
+# make canu 
+#
+externalRepos/canu-1.8/Linux-amd64/bin/canu:
+	cd externalRepos && \
+	wget https://github.com/marbl/canu/releases/download/v1.8/canu-1.8.Linux-amd64.tar.xz && \
+	tar -xf canu-1.8.Linux-amd64.tar.xz && \
+	rm canu-1.8.Linux-amd64.tar.xz
+
+#
+# make racon, okay if this fails, the pipeline will run without polishing
+#
+externalRepos/racon-v1.4.5/build/bin/racon:
+	cd externalRepos && \
+	wget https://github.com/lbcb-sci/racon/releases/download/1.4.5/racon-v1.4.5.tar.gz && \
+	tar -xvzf racon-v1.4.5.tar.gz && \
+	cd racon-v1.4.5 && mkdir build && cd build && \
+	cmake -DCMAKE_BUILD_TYPE=Release .. && make && \
+	cd ../../ && rm racon-v1.4.5.tar.gz 
+
 
 #
 # Make the test cases
@@ -54,7 +78,7 @@ TestCases/GenomeTest/ref.fasta:
 	tar -zxvf GenomeTest.tar.gz
 
 clean: 
-	source env_conda.cfg && \
+	source env_conda.sh && \
 	conda remove -y --prefix $(PWD)/envs/sda-python-3 --all ; \
 	conda remove -y --prefix $(PWD)/envs/sda-python-2 --all ; \
 	rm -f envs/python2.done envs/python3.done ; \
