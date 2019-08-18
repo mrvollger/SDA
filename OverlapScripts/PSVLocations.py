@@ -21,7 +21,7 @@ complement = {"A":"T", "T":"A", "G":"C", "C":"G", "N":"N"}
 def readPsvs():
 	dfs = []
 	for myfile in args.psvs:
-		match = re.match("group\.(\d+)\.vcf", myfile.name)
+		match = re.match(".+\.(\d+)\.vcf", myfile.name)
 		assert match is not None
 		group = int(match.group(1))
 			
