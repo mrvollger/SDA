@@ -640,7 +640,7 @@ rule psv_pos:
 	output:
 		psvtbl = "{DIR}/{PRE}.psv.tbl",
 	shell:"""
-{snake_dir}/OverlapScripts/PSVLocations.py --check {input.asms} --bam {input.bam} --psvs {input.vcfs} > {output.psvtbl}
+{base}PSVLocations.py --check {input.asms} --bam {input.bam} --psvs {input.vcfs} > {output.psvtbl}
 """
 
 
