@@ -2,8 +2,8 @@ import os
 
 snake_dir = os.path.dirname(workflow.snakefile) + "/"
 shell.executable("/bin/bash")
-#shell.prefix("source %s/env_python2.cfg; set -eo pipefail; " % snake_dir)
-shell.prefix("source %s/env_python2.cfg; " % snake_dir)
+#shell.prefix("source %s/env_python2.sh; set -eo pipefail; " % snake_dir)
+shell.prefix("source %s/env_python2.sh; " % snake_dir)
 
 #
 # script locations and configurations 
@@ -21,8 +21,8 @@ MINTOTAL=config["MINTOTAL"]
 
 base = snake_dir + "scripts/"
 scriptsDir = snake_dir + "CCscripts/"
-python3 = snake_dir + "env_python3.cfg"
-python2 = snake_dir + "env_python2.cfg"
+python3 = snake_dir + "env_python3.sh"
+python2 = snake_dir + "env_python2.sh"
 
 
 print(snake_dir)

@@ -14,8 +14,8 @@ from Bio import SeqIO
 SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
 snake_dir = SNAKEMAKE_DIR + "/"
 shell.executable("/bin/bash")
-shell.prefix("source %s/env_python3.cfg; set -eo pipefail; " % SNAKEMAKE_DIR)
-RMenv = snake_dir + "env_RM.cfg"
+shell.prefix("source %s/env_python3.sh; set -eo pipefail; " % SNAKEMAKE_DIR)
+RMenv = snake_dir + "env_RM.sh"
 
 configFileName = "config/denovo.setup.config.json"
 configfile: configFileName

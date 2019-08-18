@@ -11,7 +11,7 @@ import sys
 SNAKEMAKE_DIR = os.path.dirname(workflow.snakefile)
 snake_dir = SNAKEMAKE_DIR + "/"
 shell.executable("/bin/bash")
-shell.prefix("source %s/env_python3.cfg; " % SNAKEMAKE_DIR)
+shell.prefix("source %s/env_python3.sh; " % SNAKEMAKE_DIR)
 
 
 baxsets = {} 

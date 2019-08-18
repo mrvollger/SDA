@@ -1,7 +1,7 @@
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 echo $DIR
-source $DIR/env_python3.cfg
+source $DIR/env_python3.sh
 NPROC=$(nproc)
 
 one="snakemake --rerun-incomplete -p --cores $NPROC -s $DIR/SDA.1.snakemake.py $@"

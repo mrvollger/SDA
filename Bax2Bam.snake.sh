@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source $DIR/env_python3.cfg
+source $DIR/env_python3.sh
 
 # snakemake paramenters
 snakefile=$DIR/Bax2Bam.snakemake.py

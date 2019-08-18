@@ -7,15 +7,15 @@ import re
 
 snake_dir = os.path.dirname(workflow.snakefile)+"/"
 shell.executable("/bin/bash")
-shell.prefix("source {}/env_python3.cfg; ".format(snake_dir))
+shell.prefix("source {}/env_python3.sh; ".format(snake_dir))
 
 #
 # script locations and configurations 
 #
 base = snake_dir + "scripts/"
 overlap = snake_dir + "OverlapScripts/"
-python3 = snake_dir + "env_python3.cfg"
-python2 = snake_dir + "env_python2.cfg"
+python3 = snake_dir + "env_python3.sh"
+python2 = snake_dir + "env_python2.sh"
 
 
 if(os.path.exists("abp.config.json")):

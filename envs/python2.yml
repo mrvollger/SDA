@@ -3,7 +3,6 @@ channels:
   - bioconda
   - conda-forge
   - defaults
-  - r
 dependencies:
   - biopython=1.70
   - bcftools=1.9
