@@ -3,22 +3,59 @@ import os
 import sys
 import argparse
 import subprocess 
+DIR = os.path.dirname( os.path.realpath(__file__) )
+CWD = os.getcwd()
 
-# DEFAULTS 
+# SUBREAD/ONT DEFAULTS 
 minNumShared = 5
 maxPosRep = 3
 lrt = 1.5
 minCutSize = 4
 minCutLen = 9000
 
-parser = argparse.ArgumentParser(description="""Segmental Duplication Assembler (SDA). \t 
-Please cite: \t Vollger MR, et al. Long-read sequence and assembly of segmental duplications. Nat Methods. 2019 Jan;16(1):88-94. doi: 10.1038/s41592-018-0236-3. PMCID: PMC6382464.
-""",formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--coverage", help="The average aligned read depth of the genome", type=int)
-parser.add_argument("--platform", help="type of long read.", default="subread", choices=["subread", "ccs", "ont"])
-parser.add_argument("-t", "--threads", help="Threads for the snakemake", default=8, type=int)
-parser.add_argument("--reads", help="file with reads in it", default="reads.orig.bam" )
+parser = argparse.ArgumentParser(description="",
+usage="""SDA <command> [<args>]
+
+Segmental Duplication Assembler (SDA) commands options:
+	denovo		Run SDA on a denovo assembly.
+	collapse	Run SDA on a specific collapsed region.
+
+Please cite:
+	Vollger MR, et al. Long-read sequence and assembly of segmental duplications. 
+	Nat Methods. 2019 Jan;16(1):88-94. doi: 10.1038/s41592-018-0236-3. 
+	
+	PMCID: PMC6382464.
+""")
+parser.add_argument("command", help="denovo: run SDA on a denovo assembly while distributing to a cluster.\n collapse: run SDA on a single collapsed region.", choices=["denovo", "collapse"])
+mode = parser.parse_args(sys.argv[1:2])
+
+
+if(mode.command == "denovo"):
+	parser = argparse.ArgumentParser(description=f"SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter, 
+		usage='''
+		SDA denovo --fofn <input.fofn> [<args>]
+		For allowing cluster submission please add --cluster or --drmaa, these areguments are passed directly to snakemake. 
+		The cluster/drmaa string must include these options {threads} {mem}	{log}. Below is an example using drmaa and SGE:
+	
+	--drmaa " -l mfree={resources.mem}G -pe serial {threads} -j y -o {log} -l h_rt=128:00:00 -V -cwd -S /bin/bash "
+		''')
+	# set the snakemake to use 
+	SMK = f"{DIR}/denovo_SDA.smk"
+	#parser.add_argument("--drmaa", help=""" A string that specifies a drmma config for snakemake to use.
+	#Must include {threads}, {resources.mem} and {log} (for sdterr and stdout log files). See default for a functioning SGE example.""",
+	#default = '" -l mfree={resources.mem} -pe serial {threads} -e {log} -o {log} -l h_rt=128:00:00 -V -cwd -S /bin/bash "')
+	parser.add_argument("--fofn", help="file of file names to align to the genome")
+
+elif(mode.command == "collapse"):
+	parser = argparse.ArgumentParser(description=f"SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+	# set the snakemake to use 
+	SMK = f"{DIR}/SDA.smk"
+	parser.add_argument("--coverage", help="The average aligned read depth of the genome", type=int)
+	parser.add_argument("--reads", help="file with reads in it", default="reads.orig.bam" )
+
 parser.add_argument("--ref", help="reference fasta file", default="ref.fasta")
+parser.add_argument("--platform", help="type of long read.", default="subread", choices=["subread", "ccs", "ont"])
+parser.add_argument("-t", "--threads", help="Threads for the snakemake (collapse), jobs for snakemake (denovo)", default=8, type=int)
 parser.add_argument("-d", "--dir", help="directory for output files", default="sda_out")
 parser.add_argument("-p","--prefix", help="prefix for output files", default="sda")
 parser.add_argument("--minaln", help="Minimum alignment length", default=3000 , type=int)
@@ -35,48 +72,64 @@ parser.add_argument("--maxPosRep", help="The maximum number of reads that can li
 		default=maxPosRep, type=int)
 parser.add_argument("--minCutSize", help="The minimum number of PSVs in a cluster", default=minCutSize, type=int)
 parser.add_argument("--minCutLen", help="The minimum distance spanned by the PSVs in a cluster", default=minCutLen, type=int)
-args, unknown = parser.parse_known_args()
+parser.add_argument("--cluster", help="cluster configuration line for snakemake")
+parser.add_argument("--drmaa", help="drmaa configuration line for snakemake")
+args, snakeargs = parser.parse_known_args(sys.argv[2:])
 
-if( not args.coverage ):
+# check for required inputs 
+if( mode.command == "collapse" and not args.coverage ):
 	parser.error('No coverage specified, add --coverage {\d+}')
+if( mode.command == "denovo" and not args.fofn ):
+	parser.error('No fofn with reads specified, add --fofn')
 if(not os.path.exists(args.ref + ".fai")):
 	parser.error(f'{args.ref} must be indexed, try samtools faidx {args.ref}')
 
 
+# Update CCS defaults, if unchanged by user
 if(args.platform == "ccs"):
-	#CCS DEFAULTS, if unchanged by used 
 	if(args.minNumShared == minNumShared):
-		minNumShared = 2
+		args.minNumShared = 2
 	if(args.maxPosRep == maxPosRep ):
-		maxPosRep = 1
+		args.maxPosRep = 1
 	if(args.lrt == lrt):
-		lrt = 1.0
+		args.lrt = 1.0
 	if(args.minCutSize == minCutSize):
-		minCutSize = 2
+		args.minCutSize = 2
 	if(args.minCutLen == minCutLen):
-		minCutLen = 100 
+		args.minCutLen = 100 
 
 
-# unknown paramters will be passed to snakemake 
-snakeargs = " ".join(unknown) 
-if(len(unknown) > 0):
-	sys.stderr.write(f"Extra arguments passed to snakemake: {snakeargs}\n\n")
 
-
-DIR = os.path.dirname( os.path.realpath(__file__) )
-CWD = os.getcwd()
-
-cmd=f'''cd {DIR} && source {DIR}/env_python3.sh && cd {CWD} \
-&& snakemake \
--p -j {args.threads} -s {DIR}/SDA.smk {snakeargs} \
---config \
+# create snakemkae command
+cmd=f'''cd {DIR}/envs && source {DIR}/envs/env_python3.sh && cd {CWD} \
+&& snakemake -p -j {args.threads} -s {SMK} \
 '''
 
+if( args.drmaa ):
+	cmd += f' --drmaa " {args.drmaa} " '
+elif( args.cluster ):
+	cmd += f' --cluster " {args.cluster} " '
+	
+
+# unknown paramters will be passed to snakemake 
+snakeargs = " ".join(snakeargs) 
+if(len(snakeargs) > 0):
+	sys.stderr.write(f"Extra arguments passed to snakemake: {snakeargs}\n\n")
+	cmd += f" {snakeargs} "
+
+# add configuration options from argprase 
+cmd += " --config "
 for arg in vars(args):
-	if(arg not in ["threads"] ):
+	if(arg not in ["threads", "cluster", "drmaa"] ):
 		val = getattr(args, arg)
 		cmd += f'{arg}={val} '
 
-#sys.stderr.write(f"Snakemake command:\n{cmd}\n\n")
+	
+#if( mode.command == "denovo" ):
+#cmd += " --drmaa " + args.drmaa + " "
+
+# execute snakemake 
+sys.stderr.write(cmd+"\n")
 subprocess.call(cmd, shell=True)
+
 

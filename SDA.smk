@@ -11,11 +11,11 @@ import pandas as pd
 snake_dir = os.path.dirname(workflow.snakefile) + "/"
 CWD = os.getcwd()
 
-python2 = snake_dir + "env_python2.sh" 
-python3 = snake_dir + "env_python3.sh" 
+python2 = snake_dir + "envs/env_python2.sh" 
+python3 = snake_dir + "envs/env_python3.sh" 
 
 shell.executable("/bin/bash")
-shell.prefix(f"cd {snake_dir} && source {python3} && cd {CWD} && set -eo pipefail; ")
+shell.prefix(f"cd {snake_dir}/envs && source {python3} && cd {CWD} && set -eo pipefail; ")
 
 base = snake_dir + "scripts/"
 scriptsDir = snake_dir + "CCscripts/"
@@ -67,6 +67,13 @@ rule all:
 	input:
 		done=expand("{DIR}/{PRE}.done",DIR=DIR, PRE=PRE),
 		
+DEBUG=True
+def tempd(File):
+	if(DEBUG):
+		return(File)
+	return(temp(File))
+
+
 
 if(PLAT in ["CCS", "SUBREAD"] ):
 	rule pbmm2:
@@ -74,7 +81,7 @@ if(PLAT in ["CCS", "SUBREAD"] ):
 			reads = READS,
 			ref = REF,
 		output:
-			temp("{DIR}/{PRE}.tmp.reads.bam")
+			tempd("{DIR}/{PRE}.tmp.reads.bam")
 		threads: 8   
 		shell: """ 
 # SUBREAD gives bettern alignmetns for CCS reads than CCS
@@ -92,7 +99,7 @@ elif(PLAT in ["ONT"] ):
 			reads = READS,
 			ref = REF,
 		output:
-			temp("{DIR}/{PRE}.tmp.reads.bam")
+			tempd("{DIR}/{PRE}.tmp.reads.bam")
 		threads: 8
 		shell:"""
 samtools fasta {input.reads} | \
@@ -116,7 +123,7 @@ rule change_bam:
 	input:
 		bam="{DIR}/{PRE}.tmp.reads.bam"
 	output:
-		bam = temp("{DIR}/{PRE}.reads.bam"),
+		bam = tempd("{DIR}/{PRE}.reads.bam"),
 	shell:"""
 {base}changeBamName.py {input.bam} {output.bam}
 """
@@ -125,7 +132,7 @@ rule index:
 	input:
 		bam = "{DIR}/{PRE}.reads.bam",
 	output:
-		bai = temp("{DIR}/{PRE}.reads.bam.bai"),
+		bai = tempd("{DIR}/{PRE}.reads.bam.bai"),
 	shell:"""
 samtools index {input.bam}
 """
@@ -151,7 +158,7 @@ rule nucfreq:
 		bai = rules.index.output.bai,
 		ref= REF,
 	output:
-		nucfreq=temp("{DIR}/snvs/{PRE}.assembly.consensus.nucfreq"),
+		nucfreq=tempd("{DIR}/snvs/{PRE}.assembly.consensus.nucfreq"),
 	shell:"""
 source {python2}
 echo "Sam to nucfreq"
@@ -178,10 +185,10 @@ rule snv_tbl:
 		nucfreq=rules.nucfreq.output.nucfreq,
 		ref = REF,
 	output: 
-		snv= temp("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv"),
-		vcf= temp("{DIR}/snvs/{PRE}.assembly.consensus.nucfreq.vcf"),
-		filt=temp("{DIR}/snvs/{PRE}.assembly.consensus.nucfreq.filt"),
-		frag=temp("{DIR}/snvs/{PRE}.assembly.consensus.fragments"),
+		snv= tempd("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv"),
+		vcf= tempd("{DIR}/snvs/{PRE}.assembly.consensus.nucfreq.vcf"),
+		filt=tempd("{DIR}/snvs/{PRE}.assembly.consensus.nucfreq.filt"),
+		frag=tempd("{DIR}/snvs/{PRE}.assembly.consensus.fragments"),
 	shell:"""
 source {python2}
 echo "filter nucfreq"
@@ -221,9 +228,9 @@ rule snv_mat:
     input:
         snv=rules.snv_tbl.output.snv,	
     output:
-        mattmp=temp("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv.mat"),
-        mat= temp("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv.mat.catergorized"),
-        snvpos=temp("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv.pos")
+        mattmp=tempd("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv.mat"),
+        mat= tempd("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv.mat.catergorized"),
+        snvpos=tempd("{DIR}/snvs/{PRE}.assembly.consensus.fragments.snv.pos")
     shell:"""
 source {python2}
 {scriptsDir}/FragmentSNVListToMatrix.py {input.snv} --named --pos {output.snvpos} --mat {output.mattmp}
@@ -242,9 +249,9 @@ rule psv_graph:
 		mat=rules.snv_mat.output.mat,
 		vcf=rules.snv_tbl.output.vcf, 
 	output:
-		graph=temp("{DIR}/CC/{PRE}.mi.gml"),
-		adj = temp("{DIR}/CC/{PRE}.mi.adj"),
-		mi  = temp("{DIR}/CC/{PRE}.mi.mi"),
+		graph=tempd("{DIR}/CC/{PRE}.mi.gml"),
+		adj = tempd("{DIR}/CC/{PRE}.mi.adj"),
+		mi  = tempd("{DIR}/CC/{PRE}.mi.mi"),
 	shell:"""
 source {python2}
 {scriptsDir}/PairedSNVs.py {input.mat} --minCov {MINCOV} --maxCov {MAXCOV} \
@@ -263,7 +270,7 @@ rule repulsion:
 		graph=rules.psv_graph.output.graph,
 		mi= rules.psv_graph.output.mi,
 	output:
-		rep = temp("{DIR}/CC/{PRE}.mi.repulsion"),
+		rep = tempd("{DIR}/CC/{PRE}.mi.repulsion"),
 	shell:"""
 source {python2}
 {base}/GenerateRepulsion.py --shared {MINSHARED} --lrt {MINLRT} --max {MAXPOSREP} --gml {input.graph} --mi {input.mi} --out {output.rep}
@@ -388,7 +395,7 @@ rule phased_vcf:
 		bam = rules.index.input.bam,
 		bai = rules.index.output.bai,
 	output: 
-		vcf = temp("{DIR}/{PRE}.cuts/{PRE}.phased.{CUT}.vcf")
+		vcf = tempd("{DIR}/{PRE}.cuts/{PRE}.phased.{CUT}.vcf")
 	shell:"""
 {base}/fixVCF.py --out {output.vcf} --vcf {input.vcf} --bam {input.bam}
 """
@@ -421,7 +428,7 @@ rule phased_reads:
 	input: 
 		bam = rules.whatshap.output.bam, 
 	output:
-	    reads=temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.reads.fasta')
+	    reads=tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.reads.fasta')
 	shell:"""
 samtools fasta {input.bam} > {output.reads} 
 """
@@ -444,7 +451,7 @@ rule run_asm:
 	input: 
 		rules.phased_reads.output.reads, 
 	output: 
-		asm = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.fasta'),
+		asm = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.fasta'),
 	threads: 4
 	run:
 		ASM = str(wildcards.ASM)
@@ -505,9 +512,9 @@ rule prep_for_polish:
 		asm = rules.run_asm.output.asm, 
 		bam = rules.whatshap.output.bam, 
 	output: 
-		bam = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.bam'),
-		bai = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.bam.bai'),
-		pbi = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.bam.pbi'),
+		bam = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.bam'),
+		bai = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.bam.bai'),
+		pbi = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.bam.pbi'),
 	threads: 4
 	run:
 		if(os.path.getsize( input["asm"] ) == 0):
@@ -527,11 +534,11 @@ rule polish_asm:
 		bai = rules.prep_for_polish.output.bai,
 		pbi = rules.prep_for_polish.output.pbi,
 	output:
-		fasta = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.cor.fasta'),
-		tmp_sam = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.sam'),
-		tmp_fastq = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.reads.fastq'),
-		tmp_cor = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.racon.fasta'),
-		tmp_fai = temp('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.racon.fasta.fai'),
+		fasta = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.cor.fasta'),
+		tmp_sam = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.sam'),
+		tmp_fastq = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.reads.fastq'),
+		tmp_cor = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.racon.fasta'),
+		tmp_fai = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}.racon.fasta.fai'),
 	threads: 4
 	run:
 		if(os.path.getsize( input["asm"] ) == 0):
@@ -617,8 +624,8 @@ rule aln_asms:
 		ref = REF,
 		asms = rules.merge_asms.output.asms,
 	output:
-		bam = temp("{DIR}/{PRE}.asm.bam"),
-		bai = temp("{DIR}/{PRE}.asm.bam.bai"),
+		bam = tempd("{DIR}/{PRE}.asm.bam"),
+		bai = tempd("{DIR}/{PRE}.asm.bam.bai"),
 	threads: 4
 	shell:"""
 minimap2 -t {threads} --secondary=no -a --eqx -Y -x asm20 \
@@ -728,8 +735,52 @@ rule summary:
 		pd.set_option('precision', 0); print(rtn)
 		rtn.to_csv(output["summary"], sep="\t", index=False)
 
+
+
+
+#-----------------------------------------------------------------------------------------------------#
+#
+# Plot phased reads agaisnt asm
+#
+rule prep_for_plot:
+	input:
+		asm = rules.polish_asm.output.fasta, 
+		bam = rules.whatshap.output.bam, 
+	output: 
+		bam = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.cor_{ASM}.bam'),
+		bai = tempd('{DIR}/{PRE}.cuts/{PRE}.{CUT}.cor_{ASM}.bam.bai'),
+	threads: 4
+	run:
+		if(os.path.getsize( input["asm"] ) == 0):
+			shell("touch {output}")	
+		elif(PLAT in ["CCS", "SUBREAD"]):
+			shell("pbmm2 align --preset SUBREAD -j {threads} {input.asm} {input.bam} | samtools view -u -F 2308 - | samtools sort - > {output.bam}" )
+			shell("samtools index {output.bam}")
+		else:
+			shell("samtools fastq {input.bam} | minimap2 -ax map-ont --eqx -L -t {threads} -m {MINALN} -r {BWIDTH} {input.asm} /dev/stdin | samtools view -u -F 2308 - | samtools sort - > {output.bam}" )
+			shell("samtools index {output.bam}")
+
+rule plot_asm:
+	input:
+		bam = rules.prep_for_plot.output.bam,
+		bai = rules.prep_for_plot.output.bai,
+	output: 
+		png = "{DIR}/asm_plots/{PRE}.{CUT}.{ASM}.png"	
+	threads: 4
+	run:
+		if(os.path.getsize( input["bam"] ) == 0):
+			shell("touch {output}")	
+		else:
+			shell("{snake_dir}externalRepos/nucfreq/NucPlot.py {input.bam} {output.png} --ylim {MINTOTAL}")
+
+
+def get_phased_plots(wildcards):
+	return( expand("{DIR}/asm_plots/{PRE}.{CUT}.{ASM}.png", DIR=wildcards.DIR, CUT=get_cuts(wildcards), PRE=wildcards.PRE, ASM=ASMS ) )
+
+
 rule final_rule:
 	input:
+		plots = get_phased_plots,
 		asms = rules.merge_asms.output.asms,
 		psvs = rules.psv_pos.output.psvtbl, 
 		summary = rules.summary.output.summary,
