@@ -90,15 +90,18 @@ def ReadInRepulsion(g):
 	repfile = open(args.repulsion).readlines()
 	repulsion = { node:Set() for node in g.nodes() }
 	site = { int(g.node[i]['pos']):i for i in g.nodes()}
+	count = 0
 	for line in repfile:
 		line = line.strip().split()
 		i = int(line[0])
 		j = int(line[1])
 		if(i in site and j in site):
+			count += 1
 			i = site[i]
 			j = site[j]
 			repulsion[i].add(j)
 			repulsion[j].add(i)
+	#sys.stderr.write("Repulsion count: {}\n".format(count))
 	return(repulsion)
 
 # mrv note: addes repulsion edges for each node useing storerepulsionadj.. 
