@@ -38,13 +38,14 @@ MAXPOSREP = config["maxPosRep"]
 MINCUTSIZE = config["minCutSize"]
 MINCUTLEN = config["minCutLen"]
 ITERATIONS = config["iterations"]
+DEBUG=config["debug"]
 MINASMLENGTH=10000
 
 # standard deviation of read depth
 STD = np.sqrt(COV)
-MINCOV = int( max(COV - 3*STD, COV/2.0) )
+MINCOV = int( max(COV - 4*STD, COV/2.0) )
 MAXCOV = int( COV + 1*STD )
-MINTOTAL = int( 2*COV - 2*STD )
+MINTOTAL = int( 2*COV - 3*STD )
 MINREADS = int(MINCOV/2.0)
 
 
@@ -67,7 +68,6 @@ rule all:
 	input:
 		done=expand("{DIR}/{PRE}.done",DIR=DIR, PRE=PRE),
 		
-DEBUG=True
 def tempd(File):
 	if(DEBUG):
 		return(File)
@@ -290,6 +290,7 @@ rule run_cc:
 		sites="{DIR}/CC/{PRE}.mi.gml.sites",
 		cuts="{DIR}/CC/{PRE}.mi.gml.cuts",
 		score="{DIR}/CC/{PRE}.cuts.score.txt",
+	threads: 8
 	shell:"""	
 source {python2}
 
@@ -300,6 +301,7 @@ source {python2}
 	--minCutSize {MINCUTSIZE} \
 	--minlen {MINCUTLEN} \
 	--starts {ITERATIONS} \
+	--threads {threads} \
 	--scores {output.score} \
 	--cuts {output.cuts} --sites {output.sites} --out {output.graph}
 
@@ -676,13 +678,13 @@ rule reads_by_cut:
 			bam.close()
 
 		counts = Counter(names)
-		out = "readid\tcut\tunique\n"
+		out = "prefix\treadid\tcut\tunique\n"
 		for cut in sorted(nameByCut):
 			for readid in nameByCut[cut]:
 				unique = True
 				if(counts[readid] > 1):
 					unique = False
-				out += f"{readid}\t{cut}\t{unique}\n"
+				out += f"{PRE}\t{readid}\t{cut}\t{unique}\n"
 		
 		open(output["pids"], "w+").write(out)
 
@@ -731,6 +733,9 @@ rule summary:
 		cols.insert(1, cols.pop(cols.index("uid")))
 		cols.insert(len(cols), cols.pop(cols.index("asm_name")))
 		rtn = rtn[cols]
+		
+		# add prefix
+		rtn["prefix"] =  f"{PRE}"
 
 		pd.set_option('precision', 0); print(rtn)
 		rtn.to_csv(output["summary"], sep="\t", index=False)
