@@ -729,6 +729,7 @@ def run_cc(startnum):
 		gAdjList = { n: Set(sub[n].keys()) for n in sub.nodes() }
 
 		repulsion = StoreRepulsion(sub, args.radius)
+		#sys.stderr.write(str(repulsion)+ "\n")
 		#nReduced = SubsampleRepulsion(gAdjList, repulsion, factor=args.factor)
 		#print nReduced
 		repulsionTotal.update( repulsion )
@@ -811,6 +812,7 @@ Length of cuts {}
 ABPUtils.ColorGraphByCut(g,cuts)
 
 if args.plotRepulsion:
+    repulsionTotal = StoreRepulsion(g, args.radius)
     if(repulsionTotal): # checks to make sure it is not empty, and then adds the total of repulsion, mvr addition
         AddRepulsionEdges(g, repulsionTotal)
     

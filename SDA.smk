@@ -295,6 +295,7 @@ rule run_cc:
 source {python2}
 
 {scriptsDir}/MinDisagreeClusterByComponent.py  \
+	--plotRepulsion \
 	--graph {input.graph} \
 	--repulsion {input.rep} \
 	--niter 10000 --swap 1000000 --factor 1 \
