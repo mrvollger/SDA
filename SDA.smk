@@ -48,6 +48,11 @@ MAXCOV = int( COV + 1*STD )
 MINTOTAL = int( 2*COV - 3*STD )
 MINREADS = int(MINCOV/2.0)
 
+# accuracy for paired snv detection 
+ACCURACY = 0.8
+If(PLAT == "CCS"):
+	ACCURACY = 0.98
+
 
 ASMS = config["assemblers"].strip().split(",")
 
@@ -256,7 +261,7 @@ rule psv_graph:
 source {python2}
 {scriptsDir}/PairedSNVs.py {input.mat} --minCov {MINCOV} --maxCov {MAXCOV} \
 		--mi {output.mi} --graph {output.graph} --adj {output.adj} \
-		--minNShared {MINSHARED} --minLRT {MINLRT} --vcf {input.vcf}
+		--minNShared {MINSHARED} --minLRT {MINLRT} --accuracy {ACCURACY} --vcf {input.vcf}
 
 """
 

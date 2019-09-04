@@ -20,6 +20,7 @@ ap.add_argument("--graph", help="Write file here", default=None)
 ap.add_argument("--adj", help="Write adjacencies here.", default=None)
 ap.add_argument("--counts", help="Write ref/alt counts", default=None)
 ap.add_argument("--minLRT", help="Minimum log lilelihood ratio test", default=6, type=float)
+ap.add_argument("--accuracy", help="Average read accuracy", default=.8, type=float)
 ap.add_argument("--minNShared",help="Filter min n shared", default=0,type=int)
 ap.add_argument("--groups",help="Write groups to this file.", default=None)
 ap.add_argument("--cov", help="Estimate of coverage", default=None, type=int)
@@ -47,7 +48,7 @@ if (args.filt is not None):
     filtFile = open(args.filt)
     filtMat = [ [int(i) for i in line.split()[1:]] for line in filtFile]
 
-mi = ABPUtils.FindMutualInformation(gt, args.minCov, args.maxCov, mat['groupList'], miOutFileName=args.mi, minNShared=args.minNShared, filt=filtMat, vcf=vcf, minLRT=args.minLRT)
+mi = ABPUtils.FindMutualInformation(gt, args.minCov, args.maxCov, mat['groupList'], miOutFileName=args.mi, minNShared=args.minNShared, filt=filtMat, vcf=vcf, minLRT=args.minLRT, accuracy=args.accuracy)
 #
 # Determine the frequency of the minor allele
 #
