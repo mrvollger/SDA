@@ -50,7 +50,7 @@ MINREADS = int(MINCOV/2.0)
 
 # accuracy for paired snv detection 
 ACCURACY = 0.8
-If(PLAT == "CCS"):
+if(PLAT == "CCS"):
 	ACCURACY = 0.98
 
 
@@ -700,6 +700,7 @@ rule summary:
 		pids = rules.reads_by_cut.output.pids,
 		sites=rules.run_cc.output.sites, 
 		asms = rules.merge_asms.output.asms,
+		ref = REF,
 	output:
 		summary = "{DIR}/{PRE}.summary.txt",
 	run:
@@ -733,7 +734,7 @@ rule summary:
 		rtn = pd.merge(psvs, asms, on='cut', how='outer') 
 		rtn["asm_failed"] = pd.isna( rtn["length"] )
 		rtn["multiple_asm"] =  rtn["cut"].duplicated(keep=False)
-		
+		rtn["collapseLength"] = len(list(SeqIO.parse(input["ref"], "fasta"))[0].seq )
 		# reorder the columns 
 		cols = list(rtn)
 		cols.insert(1, cols.pop(cols.index("uid")))
