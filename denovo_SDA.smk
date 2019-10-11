@@ -65,7 +65,7 @@ IDS = list(range(len(READS ) ) )
 #
 # geting ready to run TRF and RM by splitting up the genome into multiple parts to run seperatly 
 #
-splitSize = 40 
+splitSize = 60
 FAI = REF + ".fai"
 recs = open(FAI).readlines()
 if(splitSize > len(recs)):
@@ -119,8 +119,8 @@ if(PLAT in ["CCS", "SUBREAD"] ):
 		output:
 			tempd("{DIR}/{PRE}.{ID}.reads.bam")
 		resources:
-			mem=4
-		threads: 8   
+			mem=6
+		threads: 8
 		shell: """ 
 # SUBREAD gives bettern alignmetns for CCS reads than CCS
 pbmm2 align -j {threads} \
@@ -139,7 +139,7 @@ elif(PLAT in ["ONT"] ):
 		output:
 			tempd("{DIR}/{PRE}.{ID}.reads.bam")
 		resources:
-			mem=4
+			mem=6
 		threads: 8
 		shell:"""
 samtools fasta {input.reads} | \
@@ -232,7 +232,7 @@ bedtools coverage -bed -mean -sorted -a {input.regions} -b {input.bam} | \
 #             TRF AND REPEATMASKER ON THE INPUT REFERENCE                         #
 #                                                                                 #
 ###################################################################################
-
+MAX_RM_LEN = 48
 rule split_ref:
 	input:
 		ref=REF,
@@ -248,6 +248,11 @@ rule split_ref:
 		for idx, seq in enumerate(seqs):
 			if(count not in toWrite):
 				toWrite[count] = []
+
+			seq.id = str(idx)
+			seq.name = str(idx)
+			seq.description = str(idx)
+
 			toWrite[count].append(seq)
 			count += 1
 			if(count == splitSize):
@@ -306,32 +311,41 @@ rule TRF:
 		shell("""
 			cd {trfdir} && \
 				{TRF} {fasta} {trfparam} -d && \
-				rm {pre}.{trfout}.*txt.html && \
-				rm {pre}.{trfout}.*html && \
-				cat {pre}.{trfout}.*dat > {dat} && \
-				rm {pre}.{trfout}.*dat
+				rm -f {pre}*{trfout}*txt.html && \
+				rm -f {pre}*{trfout}*html && \
+				cat {pre}*{trfout}*dat > {dat} && \
+				rm -f {pre}*{trfout}*dat
 		""")
-
+# TODO
+# repalce trf commands with -ngs (output all .dat to std for all seqs) -h (suppress html output)
+#~/sda_assemblies/software/SDA/externalRepos/trf-v4.09/bin/trf rel3_with68X_nanox2_arrowx2_10x2.fasta 2 7 7 80 20 50 5 -h -ngs
 
 rule merge_trf_rm:
 	input:
 		rm = expand(f"{DIR}/common_repeats/{PRE}.ref.{{FRAC}}.fasta.out", FRAC = FRACS),
+		asmfai= REF + ".fai",
 		trf = expand(f"{DIR}/common_repeats/{PRE}.ref.{{FRAC}}.trf.dat", FRAC = FRACS),
 	output:
-		crtmp = temp("{DIR}/common_repeats/{PRE}.common_repeats.bed"),
-		cr = "{DIR}/common_repeats/{PRE}.common_repeats.sort.merge.bed",
-		rm = "{DIR}/common_repeats/{PRE}.rm.all.tbl",
-		trf = "{DIR}/common_repeats/{PRE}.trf.all.tbl",
+		crtmp = temp(f"{DIR}/common_repeats/{PRE}.common_repeats.bed"),
+		cr = f"{DIR}/common_repeats/{PRE}.common_repeats.sort.merge.bed",
+		rm = f"{DIR}/common_repeats/{PRE}.rm.all.tbl",
+		trf = f"{DIR}/common_repeats/{PRE}.trf.all.tbl",
 	resources:
 		mem=16,
 	threads:1
 	run:
+		fai = pd.read_csv(input["asmfai"], sep="\t", names=["contig", "len", "x", "y", "z"] )
+		convert = { idx:contig for idx, contig in enumerate(fai["contig"]) }
+
 		# parse multiple RM inputs
 		rms = []
 		for frm in input["rm"]:
 			rms.append( pd.read_csv(frm, delim_whitespace=True, header=None, skiprows=[0,1,2], comment="*",
 				names = ["score", "div", "del", "ins", "contig", "start", "end", "q_left", "strand", "repeat", "class", "r_st", "r_en", "r_left", "id"]) )
+		
 		rm = pd.concat(rms, ignore_index=True).sort_values(by=["contig", "start"])
+		# insert original contig names
+		rm["contig"].replace(convert, inplace=True)
 		rm.to_csv(output["rm"], sep="\t", index=False)
 	
 		# parse multiple TRF inputs
@@ -356,6 +370,8 @@ rule merge_trf_rm:
 						except IndexError:
 							pass
 		trf = pd.DataFrame(trf, columns=trfnames).sort_values(by=["contig", "start"])
+		# insert original contig names
+		trf["contig"].replace(convert, inplace=True)
 		trf.to_csv(output["trf"], sep="\t", index=False)
 
 		# wrtie to a bed file
@@ -547,13 +563,22 @@ rule la_sda:
 		mem=4,
 	threads:8
 	shell:"""
-{snake_dir}SDA collapse --unlock --coverage {params.cov} &> /dev/null || echo "Already unlocked."
 
 {snake_dir}SDA collapse --ref {input.ref} --reads {input.bam} --coverage {params.cov} \
 	-d {params.sda_dir} -p {params.pre} -t {threads} \
 	--platform {PLAT} --minaln {MINALN} --bandwidth {BANDWIDTH} --iterations {ITERATIONS} \
 	--assemblers {ASSEMBLERS} --lrt {LRT} --minNumShared {MINNUMSHARED} --maxPosRep {MAXPOSREP} \
-	--minCutSize {MINCUTSIZE} --minCutLen {MINCUTLEN}  &> {output.out} || echo "SDA failed on this collapse" && touch {output.sda}
+	--minCutSize {MINCUTSIZE} --minCutLen {MINCUTLEN} --unlock &> \
+	/dev/null || echo "Already unlocked."
+
+
+{snake_dir}SDA collapse --ref {input.ref} --reads {input.bam} --coverage {params.cov} \
+	-d {params.sda_dir} -p {params.pre} -t {threads} \
+	--platform {PLAT} --minaln {MINALN} --bandwidth {BANDWIDTH} --iterations {ITERATIONS} \
+	--assemblers {ASSEMBLERS} --lrt {LRT} --minNumShared {MINNUMSHARED} --maxPosRep {MAXPOSREP} \
+	--minCutSize {MINCUTSIZE} --minCutLen {MINCUTLEN}  &> \
+	{output.out} || echo "SDA failed on this collapse" && touch {output.sda}
+
 """
 
 def get_sda(wildcards):
@@ -596,12 +621,40 @@ rule merge_results:
 		pd.concat(preads, ignore_index=True).to_csv(output["preads"], sep="\t", index=False)
 		pd.concat(summary, ignore_index=True).to_csv(output["summary"], sep="\t", index=False)
 
+rule summary_plots:
+	input:
+		fasta = "{DIR}/{PRE}.assemblies.fasta",
+		preads = "{DIR}/{PRE}.phased.readids",
+		summary = "{DIR}/{PRE}.summary.txt",
+		psvs = "{DIR}/{PRE}.psv.tbl",
+	output:
+		pair = "{DIR}/summary_plots/{PRE}.paired.pdf",
+		length = "{DIR}/summary_plots/{PRE}.assembled_lengths.pdf",
+		collapse = "{DIR}/summary_plots/{PRE}.collapse_vs_assemblies.pdf",
+		bar = "{DIR}/summary_plots/{PRE}.assembled_mbp.pdf",
+	resources:
+		mem=16, 
+	threads: 1
+	shell:"""
+{snake_dir}scripts/SummarySDAPlots.py  {input.summary} \
+	--dir {DIR} \
+	--prefix {PRE} \
+	--pair {output.pair} \
+	--length {output.length} \
+	--collapse {output.collapse} \
+	--bar {output.bar}
+"""
+
 rule final:
 	input:
 		fasta = "{DIR}/{PRE}.assemblies.fasta",
 		preads = "{DIR}/{PRE}.phased.readids",
 		summary = "{DIR}/{PRE}.summary.txt",
 		psvs = "{DIR}/{PRE}.psv.tbl",
+		pair = rules.summary_plots.output.pair,
+		length = rules.summary_plots.output.length,
+		collapse = rules.summary_plots.output.collapse,
+		bar = rules.summary_plots.output.bar,
 	output:
 		final = "{DIR}/{PRE}.done",
 	resources:
