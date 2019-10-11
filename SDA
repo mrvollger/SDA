@@ -22,23 +22,22 @@ Segmental Duplication Assembler (SDA) commands options:
 
 Please cite:
 	Vollger MR, et al. Long-read sequence and assembly of segmental duplications. 
-	Nat Methods. 2019 Jan;16(1):88-94. doi: 10.1038/s41592-018-0236-3. 
-	
-	PMCID: PMC6382464.
+	Nat Methods. 2019 Jan;16(1):88-94. doi: 10.1038/s41592-018-0236-3. PMCID: PMC6382464.
+
 """)
 parser.add_argument("command", help="denovo: run SDA on a denovo assembly while distributing to a cluster.\n collapse: run SDA on a single collapsed region.", choices=["denovo", "collapse"])
+parser.add_argument('--version', action='version', version='%(prog)s 1.0.0')
 mode = parser.parse_args(sys.argv[1:2])
 
 
 if(mode.command == "denovo"):
-	parser = argparse.ArgumentParser(description=f"SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter, 
-		usage='''
+	parser = argparse.ArgumentParser(description="SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter, usage='''
 		SDA denovo --fofn <input.fofn> [<args>]
 		For allowing cluster submission please add --cluster or --drmaa, these areguments are passed directly to snakemake. 
 		The cluster/drmaa string must include these string: {threads} and {resources.mem}G . Below is an example using drmaa and SGE:
 	
-	--drmaa " -l mfree={resources.mem}G -pe serial {threads} -l h_rt=128:00:00 -V -cwd -S /bin/bash "
-		''')
+	--drmaa " -l mfree={resources.mem}G -pe serial {threads} -l h_rt=128:00:00 -V -cwd -S /bin/bash " ''')
+
 	# set the snakemake to use 
 	SMK = f"{DIR}/denovo_SDA.smk"
 	#parser.add_argument("--drmaa", help=""" A string that specifies a drmma config for snakemake to use.
@@ -46,6 +45,8 @@ if(mode.command == "denovo"):
 	#default = '" -l mfree={resources.mem} -pe serial {threads} -e {log} -o {log} -l h_rt=128:00:00 -V -cwd -S /bin/bash "')
 	parser.add_argument("--fofn", help="file of file names to align to the genome")
 	parser.add_argument("--species", help="species name of data base for repeat makser", default="human")
+	parser.add_argument("--cluster", help="cluster configuration line for snakemake")
+	parser.add_argument("--drmaa", help="drmaa configuration line for snakemake")
 
 elif(mode.command == "collapse"):
 	parser = argparse.ArgumentParser(description=f"SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -73,8 +74,6 @@ parser.add_argument("--maxPosRep", help="The maximum number of reads that can li
 		default=maxPosRep, type=int)
 parser.add_argument("--minCutSize", help="The minimum number of PSVs in a cluster", default=minCutSize, type=int)
 parser.add_argument("--minCutLen", help="The minimum distance spanned by the PSVs in a cluster", default=minCutLen, type=int)
-parser.add_argument("--cluster", help="cluster configuration line for snakemake")
-parser.add_argument("--drmaa", help="drmaa configuration line for snakemake")
 parser.add_argument("--debug", help="If set the temporary files are not deleted.", action='store_true', default=False)
 args, snakeargs = parser.parse_known_args(sys.argv[2:])
 
@@ -97,8 +96,9 @@ if(args.platform.lower() == "ccs"):
 		args.lrt = 1.0
 	if(args.minCutSize == minCutSize):
 		args.minCutSize = 2
-	if(args.minCutLen == minCutLen):
-		args.minCutLen = 100 
+	# can be changes on a case by case bases but not good in general. 
+	#if(args.minCutLen == minCutLen):
+	#	args.minCutLen = 100 
 
 
 # create snakemkae command
@@ -106,15 +106,18 @@ cmd=f'''cd {DIR}/envs && source {DIR}/envs/env_python3.sh && cd {CWD} \
 && snakemake -p -j {args.threads} -s {SMK} \
 '''
 
-LOG = os.path.abspath( os.path.join(args.dir, "logs") )
-if(not os.path.exists(LOG)):
-	os.makedirs(LOG)
 
-if( args.drmaa ):
-	cmd += f' --drmaa " {args.drmaa} " --drmaa-log-dir {LOG} '
-elif( args.cluster ):
-	cmd += f' --cluster " {args.cluster} -j y -o {LOG} " '
-	
+# add cluster config arrguments
+if(mode.command == "denovo"):
+	LOG = os.path.abspath( os.path.join(args.dir, "logs") )
+	if(not os.path.exists(LOG)):
+		os.makedirs(LOG)
+
+	if( args.drmaa ):
+		cmd += f' --drmaa " {args.drmaa} " --drmaa-log-dir {LOG} '
+	elif( args.cluster ):
+		cmd += f' --cluster " {args.cluster} -j y -o {LOG} " '
+		
 
 # unknown paramters will be passed to snakemake 
 snakeargs = " ".join(snakeargs) 
