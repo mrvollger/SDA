@@ -470,7 +470,7 @@ rule run_asm:
 		asmdir=f'{DIR}/{PRE}.cuts/{PRE}.{CUT}.{ASM}/'
 		print(asmdir)
 		shell("rm -rf {asmdir} && mkdir -p {asmdir}")
-	
+
 		if(ASM == "canu"):
 			shell('''
 				{CANU} {canu_p} {input} \
