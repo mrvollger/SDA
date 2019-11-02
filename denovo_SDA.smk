@@ -12,7 +12,7 @@ import tempfile
 snake_dir = os.path.dirname(workflow.snakefile) + "/"
 CWD = os.getcwd()
 
-python3 =  f"cd {snake_dir}envs/ && source env_python3.sh && cd {CWD}" 
+python3 =  f"cd {snake_dir} && source env_sda.sh && cd {snake_dir}envs/ && source env_python3.sh && cd {CWD}" 
 
 shell.executable("/bin/bash")
 shell.prefix(f"{python3} && set -eo pipefail; ")
@@ -51,7 +51,7 @@ ITERATIONS = config["iterations"]
 RM_DB = config["species"]
 ASSEMBLERS = config["assemblers"]
 DEBUG = config["debug"]
-
+MAX_TIME="400m"
 # window size of calcualting coverage
 WINDOW = 1000
 # minimum size for a collapse
@@ -562,24 +562,39 @@ rule la_sda:
 	resources:
 		mem=4,
 	threads:8
-	shell:"""
+	run:
+		SDA_BAM = os.path.abspath(input["bam"])
+		SDA_REF = os.path.abspath(input["ref"])
+		SDA_DIR = os.path.abspath(params["sda_dir"])
+		SDA_SDA = os.path.abspath(output["sda"])
+		SDA_OUT = os.path.abspath(output["out"])
+		cmd = """
+# clear any previous runs 
+rm -rf {params.sda_dir}/{params.pre}*
+rm -rf {params.sda_dir}/*/{params.pre}*
 
-{snake_dir}SDA collapse --ref {input.ref} --reads {input.bam} --coverage {params.cov} \
-	-d {params.sda_dir} -p {params.pre} -t {threads} \
+# move to execution dir 
+pushd {params.sda_dir}
+
+{snake_dir}SDA collapse --ref {SDA_REF} --reads {SDA_BAM} --coverage {params.cov} \
+	-d {SDA_DIR} -p {params.pre} -t {threads} \
 	--platform {PLAT} --minaln {MINALN} --bandwidth {BANDWIDTH} --iterations {ITERATIONS} \
 	--assemblers {ASSEMBLERS} --lrt {LRT} --minNumShared {MINNUMSHARED} --maxPosRep {MAXPOSREP} \
 	--minCutSize {MINCUTSIZE} --minCutLen {MINCUTLEN} --unlock &> \
 	/dev/null || echo "Already unlocked."
 
 
-{snake_dir}SDA collapse --ref {input.ref} --reads {input.bam} --coverage {params.cov} \
-	-d {params.sda_dir} -p {params.pre} -t {threads} \
+timeout {MAX_TIME} {snake_dir}SDA collapse --ref {SDA_REF} --reads {SDA_BAM} --coverage {params.cov} \
+	-d {SDA_DIR} -p {params.pre} -t {threads} \
 	--platform {PLAT} --minaln {MINALN} --bandwidth {BANDWIDTH} --iterations {ITERATIONS} \
 	--assemblers {ASSEMBLERS} --lrt {LRT} --minNumShared {MINNUMSHARED} --maxPosRep {MAXPOSREP} \
 	--minCutSize {MINCUTSIZE} --minCutLen {MINCUTLEN}  &> \
-	{output.out} || echo "SDA failed on this collapse" && touch {output.sda}
+	{SDA_OUT} || echo "SDA failed on this collapse" && touch {SDA_SDA}
 
-"""
+popd
+		"""
+		shell(cmd)
+		
 
 def get_sda(wildcards):
 	return( [ COL_SDA_FMT.format(DIR=DIR, PRE=PRE, LA_ID=LA_ID) for LA_ID in get_ids(wildcards) ] )
