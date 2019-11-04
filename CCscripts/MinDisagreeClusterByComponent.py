@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-
-
+import sys
 import argparse
 ap = argparse.ArgumentParser(description="Heuristic for min-disagree clustering")
 ap.add_argument("--graph", help="Graph file.", required=True)
@@ -18,6 +17,7 @@ ap.add_argument("--embed", help="Stop in ipython shell.", action='store_true', d
 ap.add_argument("--cuts", help="Write cuts to this file.", default=None)
 ap.add_argument("--scores", help="Write the different CC scores to an output file", default="CC.scores.txt")
 ap.add_argument("--starts", help="Number of times to rerun CC looking for a better score", type=int, default=15)
+ap.add_argument("--threads", help="Number of threads for CC", type=int, default=1)
 ap.add_argument("--minlen", help="minimum length of a psv cluster", type=int, default=9000)
 ap.add_argument("--minCutSize", help="minimum number of PSVs in a cluster", type=int, default=5)
 ap.add_argument("--sites", help="Write sites of cuts to this file.", default=None)
@@ -90,15 +90,18 @@ def ReadInRepulsion(g):
 	repfile = open(args.repulsion).readlines()
 	repulsion = { node:Set() for node in g.nodes() }
 	site = { int(g.node[i]['pos']):i for i in g.nodes()}
+	count = 0
 	for line in repfile:
 		line = line.strip().split()
 		i = int(line[0])
 		j = int(line[1])
 		if(i in site and j in site):
+			count += 1
 			i = site[i]
 			j = site[j]
 			repulsion[i].add(j)
 			repulsion[j].add(i)
+	#sys.stderr.write("Repulsion count: {}\n".format(count))
 	return(repulsion)
 
 # mrv note: addes repulsion edges for each node useing storerepulsionadj.. 
@@ -109,7 +112,7 @@ def StoreRepulsion(g, radius=None):
     if(args.repulsion is None): # marks original 
         repulsion = { i: StoreRepulsionAdjacency(g,i,pos,radius) for i in g.nodes() }
     else: # mrv addition
-        print("READING IN REPULSION")
+        #print("READING IN REPULSION")
         repulsion = ReadInRepulsion(g)
     nUpdated = 0
     # Make sure the repulsion sets are reflexive
@@ -702,10 +705,12 @@ def AddLayoutPreCC(g):
 	
 
 
-starts = args.starts
-scores = {}
-scoreVals = []
-for idx in range(starts):
+#starts = args.starts
+#scores = {}
+#scoreVals = []
+#for idx in range(starts):
+
+def run_cc(startnum):
 	# mrv note: means the compenent must have at least args.minCutSize nodes
 	components = ABPUtils.GetComponents(g, args.minCutSize)
 	repulsionTotal = {}
@@ -724,6 +729,7 @@ for idx in range(starts):
 		gAdjList = { n: Set(sub[n].keys()) for n in sub.nodes() }
 
 		repulsion = StoreRepulsion(sub, args.radius)
+		#sys.stderr.write(str(repulsion)+ "\n")
 		#nReduced = SubsampleRepulsion(gAdjList, repulsion, factor=args.factor)
 		#print nReduced
 		repulsionTotal.update( repulsion )
@@ -742,32 +748,51 @@ for idx in range(starts):
 
 		cutLengths = [len(c) for c in cuts]
 		# mrv addition, merge cuts that get better if they are merged
-		print "before/after"
-		cutLengths = [len(c) for c in cuts]; print cutLengths
+		# print "before/after"
+		cutLengths = [len(c) for c in cuts]; #print cutLengths
 
 		MergeCutsCC(sub, cuts, gAdjList, repulsion)
-		cutLengths = [len(c) for c in cuts]; print cutLengths
+		cutLengths = [len(c) for c in cuts]; #print cutLengths
 
 		RemoveSmallCuts(cuts)
-		cutLengths = [len(c) for c in cuts]; print cutLengths
+		cutLengths = [len(c) for c in cuts]; #print cutLengths
 
 		if args.swap > 0:
 			OptimizeBySwappingNodes(gAdjList, cuts, repulsion, args.swap)
-		cutLengths = [len(c) for c in cuts]; print cutLengths
+		cutLengths = [len(c) for c in cuts]; #print cutLengths
 
 		RemoveSmallCuts(cuts)            
-		cutLengths = [len(c) for c in cuts]; print cutLengths
+		cutLengths = [len(c) for c in cuts]; #print cutLengths
 
 		allCuts += cuts
 	
 		if(len(cuts)>0):
 			for cut in cuts:
 				totalScore += ScoreCut(gAdjList, cut, repulsion)
-	print(totalScore)
-	scoreVals.append(totalScore)
-	scores[ totalScore ] = allCuts
+	#print(totalScore)
+	#scoreVals.append(totalScore)
+	#scores[ totalScore ] = allCuts
+	return(totalScore, allCuts, startnum)
+#
+# adding multithreading
+#
+starts = args.starts
+scores = {}
+scoreVals = []
 
-print( scores.keys() )
+def mp_handler():
+	pool = Pool(args.threads)
+	for totalScore, allCuts, startnum in pool.imap(run_cc, range(starts) ):
+		sys.stderr.write("Score {}, Number cuts {}, Restart {}\n".format(totalScore, len(allCuts), startnum) )
+		scoreVals.append(totalScore)
+		scores[ totalScore ] = allCuts
+
+
+if __name__ == '__main__':
+	mp_handler()
+
+
+#print( scores.keys() )
 
 #### WRITE SCORES TO OUTPUT FILE ###
 f = open(args.scores, "w+")
@@ -776,15 +801,18 @@ for idx, tmpscore in enumerate(scoreVals):
 f.close()
 ######
 
-
 #------------------------------------------------------------------------------------------#
 cuts = scores[ min( scores.keys() ) ]
-print("------------------")
-print(len(cuts))
-print("------------------")
+sys.stderr.write("""------------------
+Number of cuts {}
+Length of cuts {}
+------------------
+""".format(len(cuts), [len(cut) for cut in cuts]))
+
 ABPUtils.ColorGraphByCut(g,cuts)
 
 if args.plotRepulsion:
+    repulsionTotal = StoreRepulsion(g, args.radius)
     if(repulsionTotal): # checks to make sure it is not empty, and then adds the total of repulsion, mvr addition
         AddRepulsionEdges(g, repulsionTotal)
     
@@ -820,8 +848,8 @@ if args.out is not None:
 	# mrv note: getting weird error looking for source: 
 	# nx.write_gml(g, graphName)raise NetworkXError('%r is not a string' % (value,))
     # only happens sometimes, when using the export each iteration option. Not a big problem. 
-    print(args.out)
-    for cut in cuts: print(cut)
+    #print(args.out)
+    #for cut in cuts: print(cut)
     ABPUtils.WriteGraph(g, args.out)
 
 

@@ -1,3 +1,6 @@
 [submodule "externalRepos/pbgreedyphase"]
 	path = externalRepos/pbgreedyphase
         url = git://github.com/mchaisso/pbgreedyphase.git
+[submodule "externalRepos/nucfreq"]
+	path = externalRepos/nucfreq
+	url = https://github.com/mvollger/nucfreq

@@ -9,133 +9,178 @@ git clone --recurse-submodules git://github.com/mvollger/SDA.git
 # Install: #
 The requirements for SDA are taken care of by two custom conda environments (sda-python-2 and sda-python-3). In order to run SDA, you must already have anaconda 3 installed on your system and you must be able to create conda environments. 
 
-Once that is done, create `env_conda.sh` so that it adds conda to your path. The `CONDA_PATH` variable must be set so that it points at you conda installation. 
-In addition to your conda path we recommend adding gcc to your path and making your environment sparse.
-We suggest using `gcc=6.4.0` because that is what we have used when installing SDA. 
-Here is an example of what your `env_conda.sh` might look like.
+Once that is done, create `env_sda.sh` so that it adds conda to your path.  
+In addition gcc, cmake, and RepeatMasker must already be in your path or added to your path in `env_sda.sh`.
+	Notes:
+		1) To install `Racon` cmake must be avalible.
+		2) To run `SDA denovo` there must be a version of `RepeatMasker` with `wublast`.
+		3) We suggest using `gcc=6.4.0`.
+ 
+Here is an example of what your `env_sda.sh` might look like:
 ```
 #!/bin/bash
 
-# commands to clean your env...
-
-# commands for adding conda to your path...  
-export CONDA_PATH=/your/local/anaconda/install # e.g. /net/eichler/vol2/home/mvollger/anaconda3
-export PATH=$CONDA_PATH/bin:$PATH
-
-# commands to load gcc as an example I have provided the command I use to load gcc 
+unset PYTHONPATH
+module purge
+. /etc/profile.d/modules.sh
+module load modules modules-init modules-gs/prod modules-eichler
 module load gcc/6.4.0
+module load cmake/3.14.3
+module load perl/5.14.2
+module load RepeatMasker/3.3.0
 
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+source /net/eichler/vol26/projects/sda_assemblies/nobackups/software/miniconda3/etc/profile.d/conda.sh
+conda activate
 ```
 
-Once `env_conda.sh` has been created and the anaconda environment is in your path (e.g. `source env_conda.sh`), the `Makefile` can be run with:
+Once `env_sda.sh` has been created the `Makefile` can be run with:
 ```
 make
 ```
-Several people have run into an error with readToSNVList if it is complied with gcc 8.x so please complie with gcc 6. 
+Several people have run into an error with readToSNVList if it is complied with gcc 8.x so please complie with gcc 6.4.0. 
 
 
 
 
 # Run: #
 
-## Required input files: ## 
 ```
-ref.fasta # collapsed representation of a segmental duplication
-reads.orig.bam # reads aligning to the collapsed duplication. Note: if you want quiver/arrow error correction to happen these reads must be aligned using PacBio’s version of Blasr to preserve quality values. 
-sda.config.json
-```
-The file `sda.config.json` must have four values set:
-`MINCOV` should be set to a depth value above the average depth of sequencing error, `MAXCOV` should be set to a value around the average read depth, `MINTOTAL` should be set to the minimum expected coverage for a collapsed duplication, and `project` should just be a string identifier for your project. 
-Below is an example of what the file might look like:
-```
-{
-	"MINCOV" : 27, # Minimum depth over a PSV for it to be considered
-	"MAXCOV" : 54, # Maximum depth over a PSV for it to be considered
-	"MINTOTAL" : 83, # Minimum total depth at a PSV position for it to be considered. 
-	"project": "CHM1_V4" # a name for your project (no spaces).
-}
-```
-If you want to run with oxford nanopore technolgies (ONT) data you should add the following to `sda.config.json` above the `MINCOV` line: 
-```
-"ont" : "True",
-```
+./SDA  -h
+usage: SDA <command> [<args>]
 
+Segmental Duplication Assembler (SDA) commands options:
+        denovo          Run SDA on a denovo assembly.
+        collapse        Run SDA on a specific collapsed region.
 
-### Optional input: ### 
-If you are running SDA on a human genome you can provide additional files that will be used to compare your SDA results against. 
-```
-ref.fasta.bed  # bed file containing the locations of the duplications in GRCh38.
-duplications.fasta # fasta file with the duplicated sequence from GRCh38. The header of each paralog must be in the format  “>{chromosome}:{start position}-{end position}”
-```
-If you include these files many additional outfiles are created. For example, `canu.summary.txt` which contains a summary of where the SDA contigs aligned to the reference and how well the match the reference. You can run the test case with and without `duplications.fasta` to see the difference. 
+Please cite:
+        Vollger MR, et al. Long-read sequence and assembly of segmental duplications.
+        Nat Methods. 2019 Jan;16(1):88-94. doi: 10.1038/s41592-018-0236-3.
 
+        PMCID: PMC6382464.
 
-## Running: ##
+positional arguments:
+  {denovo,collapse}  denovo: run SDA on a denovo assembly while distributing
+                     to a cluster. collapse: run SDA on a single collapsed
+                     region.
 
-SDA is run by a snakemake script. While SDA should run correctly as long as the required files are properly in place, you may find some knowledge of snakemake useful in running SDA.  
-
-If the github repo is added to your path just type `SDA`; if not, type `/path/to/git/repo/SDA`.
-
-
-## Output: ##
-There are three main output files:
-```
-canu.assemblies.fasta
-miniasm.assemblies.fasta
-wtdbg.assemblies.fasta
-```
-These are fasta files containing the sequences for each paralog as determined by SDA. The prefixes say which assembler was used to generate the results - in my experience canu has worked best.
-
-For a visualization of the correlation clustering results see `CC/mi.cuts.gml.pdf`
-
-## Test cases: ##
-There is a test case created by the make file in `TestCases/SDAtest`. Please test SDA on this before testing your own data (Note quiver will not run on this test case). 
-A second test case in `TestCases/SDAtest2` will run quiver/arrow without error. 
-
-
-
-### Common Java Error: ###
-Some users will find that while creating the file `CC/mi.cuts.gml.pdf` they get the following error:
-```
-undefined symbol: FT_Done_MM_Var 
-```
-If you get this error we recommend re-installing `openjdk` as this has resolved the issue for others. 
-```
-source env_python3.sh 
-conda uninstall openjdk
-conda install openjdk
-conda install -c bioconda canu=1.7
+optional arguments:
+  -h, --help         show this help message and exit
 ```
 
-
-
-
-# Identifying Collapsed Duplications #
-
-I have written a snakemake (`ProcessCollapsedAssembly.py`) for identifying collapsed duplications within a de novo assembly. 
-It requires the user to have a working install of `RepeatMasker` and setup a config script called `env_RM.sh`, but otherwise the dependencies are taken care of by `sda-python-3`. An exmaple of my config is shown below:
+## Run "SDA collapse" ##
 ```
-module load perl/5.14.2
-module load RepeatMasker/3.3.0
+./SDA collapse -h
+usage: SDA [-h] [--coverage COVERAGE] [--reads READS] [--ref REF]
+           [--platform {subread,ccs,ont,SUBREAD,CCS,ONT}] [-t THREADS]
+           [-d DIR] [-p PREFIX] [--minaln MINALN] [--bandwidth BANDWIDTH]
+           [--iterations ITERATIONS] [--assemblers ASSEMBLERS] [--lrt LRT]
+           [--minNumShared MINNUMSHARED] [--maxPosRep MAXPOSREP]
+           [--minCutSize MINCUTSIZE] [--minCutLen MINCUTLEN] [--debug]
+
+SDA collapse
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --coverage COVERAGE   The average aligned read depth of the genome (default:
+                        None)
+  --reads READS         file with reads in it (default: reads.orig.bam)
+  --ref REF             reference fasta file (default: ref.fasta)
+  --platform {subread,ccs,ont,SUBREAD,CCS,ONT}
+                        type of long read. (default: subread)
+  -t THREADS, --threads THREADS
+                        Threads for the snakemake (collapse), jobs for
+                        snakemake (denovo) (default: 8)
+  -d DIR, --dir DIR     directory for output files (default: sda_out)
+  -p PREFIX, --prefix PREFIX
+                        prefix for output files (default: sda)
+  --minaln MINALN       Minimum alignment length (default: 3000)
+  --bandwidth BANDWIDTH
+                        bandwidth used in alignment (default: 50000)
+  --iterations ITERATIONS
+                        Number of times to run CC (default: 10)
+  --assemblers ASSEMBLERS
+                        Which assemblers to use for local assembly. canu or
+                        wtdbg2 or both with commas and no spaces. Assemblies
+                        are reported from only the first assembler unless it
+                        fails, in which case the second assembler is used and
+                        so on. (default: canu,wtdbg2)
+  --lrt LRT             Required log likelihood ratio of reads with PSV vs
+                        reads without (default: 1.5)
+  --minNumShared MINNUMSHARED
+                        The minimum number of reads that must span between two
+                        PSVs (default: 5)
+  --maxPosRep MAXPOSREP
+                        The maximum number of reads that can link two PSVs and
+                        still mark an edge as negative (default: 3)
+  --minCutSize MINCUTSIZE
+                        The minimum number of PSVs in a cluster (default: 4)
+  --minCutLen MINCUTLEN
+                        The minimum distance spanned by the PSVs in a cluster
+                        (default: 9000)
+  --debug               If set the temporary files are not deleted. (default:
+                        False)
 ```
-This process can be started by executing using this script `ProcessCollapsedAssembly.snake.sh` once the required input is in place. 
-If you do not have a sungrid engine you will have to modify `ProcessCollapsedAssembly.snake.sh` to work on your cluster. 
+
+## Run "SDA denovo" ##
+```
+./SDA denovo -h
+usage:
+                SDA denovo --fofn <input.fofn> [<args>]
+                For allowing cluster submission please add --cluster or --drmaa, these areguments are passed directly to snakemake.
+                The cluster/drmaa string must include these string: {threads} and {resources.mem}G . Below is an example using drmaa and SGE:
+
+        --drmaa " -l mfree={resources.mem}G -pe serial {threads} -l h_rt=128:00:00 -V -cwd -S /bin/bash "
 
 
-## Required input: ##
-This process only has one required input and that is a config file called `denovo.setup.config.json` which must be placed in a directory called config (`config/denovo.setup.config.json`).  An example of the `denovo.setup.config.json` file is shown below:
-```
-{	
-	"asm" : "NA19240.fasta", # The denovo assembly to examine.
-	"reads" : "reads.fofn", # A file of file names (FOFN) containing all the reads used in denovo assembly.
-	"project" : "NA19240", # A project identifier, can be anything (no spaces). 
-    "read_files_per_job" : 2  # the number of read files to submit to blasr at once. I recommend less than 15GB of data per job.
-}
-```
-If you are running the pipeline on non-human data/assembly you should specify the `"species" : "your_species"`. `"your_species"` will be passed to RepeatMasker, thus it must be a vialid database for RepeatMasker. 
+SDA denovo
 
-Once again `"ont" : "True"` can be added for use with ONT data. 
-Additionally `"pbmm2" : "Ture"` can be added to use pbmm2 instead of blasr for alignments. 
+optional arguments:
+  -h, --help            show this help message and exit
+  --fofn FOFN           file of file names to align to the genome (default:
+                        None)
+  --species SPECIES     species name of data base for repeat makser (default:
+                        human)
+  --cluster CLUSTER     cluster configuration line for snakemake (default:
+                        None)
+  --drmaa DRMAA         drmaa configuration line for snakemake (default: None)
+  --ref REF             reference fasta file (default: ref.fasta)
+  --platform {subread,ccs,ont,SUBREAD,CCS,ONT}
+                        type of long read. (default: subread)
+  -t THREADS, --threads THREADS
+                        Threads for the snakemake (collapse), jobs for
+                        snakemake (denovo) (default: 8)
+  -d DIR, --dir DIR     directory for output files (default: sda_out)
+  -p PREFIX, --prefix PREFIX
+                        prefix for output files (default: sda)
+  --minaln MINALN       Minimum alignment length (default: 3000)
+  --bandwidth BANDWIDTH
+                        bandwidth used in alignment (default: 50000)
+  --iterations ITERATIONS
+                        Number of times to run CC (default: 10)
+  --assemblers ASSEMBLERS
+                        Which assemblers to use for local assembly. canu or
+                        wtdbg2 or both with commas and no spaces. Assemblies
+                        are reported from only the first assembler unless it
+                        fails, in which case the second assembler is used and
+                        so on. (default: canu,wtdbg2)
+  --lrt LRT             Required log likelihood ratio of reads with PSV vs
+                        reads without (default: 1.5)
+  --minNumShared MINNUMSHARED
+                        The minimum number of reads that must span between two
+                        PSVs (default: 5)
+  --maxPosRep MAXPOSREP
+                        The maximum number of reads that can link two PSVs and
+                        still mark an edge as negative (default: 3)
+  --minCutSize MINCUTSIZE
+                        The minimum number of PSVs in a cluster (default: 4)
+  --minCutLen MINCUTLEN
+                        The minimum distance spanned by the PSVs in a cluster
+                        (default: 9000)
+  --debug               If set the temporary files are not deleted. (default:
+                        False)
+```
 
 There is a test case for this snakemake but it is rather large, 20Gb of data. To download it execute the following:
 ```
