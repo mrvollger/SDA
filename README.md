@@ -3,7 +3,7 @@
 
 # Download: #
 ```
-git clone --recurse-submodules git://github.com/mvollger/SDA.git
+git clone --recurse-submodules git://github.com/mrvollger/SDA.git
 ```
 
 # Install: #
