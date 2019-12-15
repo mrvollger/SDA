@@ -305,7 +305,7 @@ rule TRF:
 		fasta = os.path.abspath(input["split"])
 		dat = os.path.abspath(output["trf"])
 		trfdir = os.path.dirname(input["split"])
-		param = ["2", "7", "7", "80", "10", "50", "5"]
+		param = ["2", "7", "7", "80", "10", "50", "2000"]
 		trfparam = " ".join(param)
 		trfout = ".".join(param)
 		shell("""
