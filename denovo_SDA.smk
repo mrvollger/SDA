@@ -413,6 +413,7 @@ rule high_coverage_regions:
 	output:
 		stats = "{DIR}/coverage/{PRE}.coverage.stats",
 		hcr = "{DIR}/coverage/{PRE}.collapses.bed",
+		hcr_cm = "{DIR}/coverage/{PRE}.collapses.with.cm.bed",
 	resources:
 		mem=16,
 	threads:1
@@ -435,9 +436,10 @@ rule high_coverage_regions:
 		shell("""
 awk '{{ if ($4 > {MINCOV}) print;}}' {input.cov} \
 	| bedtools merge -d 10 -c 4,4,5 -o mean,median,sum \
-	| awk '{{ if ($3-$2 > {MINCOLLEN}) {{ print $0"\t"$3-$2;}} }}' \
-	| awk '{{ if ($6/$7*100 <= {MAXCR}) {{ print $0}} }}' > {output.hcr}
-""")
+	| awk '{{ if ($3-$2 > {MINCOLLEN}) {{ print $0"\t"$3-$2;}} }}' > {output.hcr_cm} """)
+
+		shell(""" 
+awk '{{ if ($6/$7*100 <= {MAXCR}) {{ print $0}} }}' {output.hcr_cm} > {output.hcr} """)
 		
 ###################################################################################
 #                                                                                 #
