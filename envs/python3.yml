@@ -19,7 +19,7 @@ dependencies:
   - drmaa=0.7.9
   - networkx=2.1
   - pandas=0.23.4
-  - pbmm2=1.0.0
+  - pbmm2=1.1.0
   - pip=18.0
   - numpy=1.15.0
   - matplotlib=2.2.2
