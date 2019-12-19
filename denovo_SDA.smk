@@ -51,7 +51,7 @@ ITERATIONS = config["iterations"]
 RM_DB = config["species"]
 ASSEMBLERS = config["assemblers"]
 DEBUG = config["debug"]
-MAX_TIME="400m"
+MAX_TIME="300m"
 # window size of calcualting coverage
 WINDOW = 1000
 # minimum size for a collapse
@@ -65,6 +65,7 @@ IDS = list(range(len(READS ) ) )
 #
 # geting ready to run TRF and RM by splitting up the genome into multiple parts to run seperatly 
 #
+splitSize = 200
 splitSize = 60
 FAI = REF + ".fai"
 recs = open(FAI).readlines()
@@ -276,7 +277,7 @@ rule RepeatMasker:
 		msk = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.masked"),
 	resources:
 		mem=8,
-	threads:8
+	threads:4
 	run:
 		rmdir = os.path.dirname(input["split"])
 		shell("""		
@@ -308,17 +309,9 @@ rule TRF:
 		param = ["2", "7", "7", "80", "10", "50", "2000"]
 		trfparam = " ".join(param)
 		trfout = ".".join(param)
-		shell("""
-			cd {trfdir} && \
-				{TRF} {fasta} {trfparam} -d && \
-				rm -f {pre}*{trfout}*txt.html && \
-				rm -f {pre}*{trfout}*html && \
-				cat {pre}*{trfout}*dat > {dat} && \
-				rm -f {pre}*{trfout}*dat
-		""")
-# TODO
-# repalce trf commands with -ngs (output all .dat to std for all seqs) -h (suppress html output)
-#~/sda_assemblies/software/SDA/externalRepos/trf-v4.09/bin/trf rel3_with68X_nanox2_arrowx2_10x2.fasta 2 7 7 80 20 50 5 -h -ngs
+		shell("""{TRF} {fasta} {trfparam} -h -ngs > {output.trf} """ )
+
+
 
 rule merge_trf_rm:
 	input:
@@ -331,33 +324,30 @@ rule merge_trf_rm:
 		rm = f"{DIR}/common_repeats/{PRE}.rm.all.tbl",
 		trf = f"{DIR}/common_repeats/{PRE}.trf.all.tbl",
 	resources:
-		mem=16,
+		mem=32,
 	threads:1
 	run:
 		fai = pd.read_csv(input["asmfai"], sep="\t", names=["contig", "len", "x", "y", "z"] )
 		convert = { idx:contig for idx, contig in enumerate(fai["contig"]) }
-
-		# parse multiple RM inputs
-		rms = []
-		for frm in input["rm"]:
-			rms.append( pd.read_csv(frm, delim_whitespace=True, header=None, skiprows=[0,1,2], comment="*",
-				names = ["score", "div", "del", "ins", "contig", "start", "end", "q_left", "strand", "repeat", "class", "r_st", "r_en", "r_left", "id"]) )
 		
-		rm = pd.concat(rms, ignore_index=True).sort_values(by=["contig", "start"])
-		# insert original contig names
-		rm["contig"].replace(convert, inplace=True)
-		rm.to_csv(output["rm"], sep="\t", index=False)
-	
-		# parse multiple TRF inputs
+
+		#
+		# PARSE TRF
+		#
 		trfnames = 'contig start end PeriodSize CopyNumber ConsensusSize PercentMatches PercentIndels Score A C G T Entropy Motif Sequence'.split()	
 		trf= []
 		for ftrf in input["trf"]:
-			chrom = ""
+			chrom = None
+			sys.stderr.write(ftrf + "\n" )
 			with open(ftrf, 'r') as dat:
 				for line in dat:
 					splitline = line.split()
-					if line.startswith("Sequence:"):
-						chrom = line.split()[1]
+					if( line.startswith("Sequence:") ):
+						chrom = int(line.split()[1].strip())
+						#sys.stderr.write(chrom + "\n")
+					elif( line.startswith("@") ):
+						chrom = int(splitline[0][1:].strip()) # grab everything after the @ in the first word
+						#sys.stderr.write(chrom + "\n")
 					else:
 						# Catch index errors when line is blank
 						try:
@@ -366,15 +356,53 @@ rule merge_trf_rm:
 								int(splitline[0])
 							except ValueError:
 								continue
-							trf.append([chrom] + splitline)
+							trf.append([chrom] + splitline[ 0: (len(trfnames)-1) ] )
 						except IndexError:
 							pass
-		trf = pd.DataFrame(trf, columns=trfnames).sort_values(by=["contig", "start"])
+		trf = pd.DataFrame(trf, columns=trfnames)
+		print(trf.shape )
+		
+		trf["start"] = trf["start"].astype(int)
+		trf.sort_values(by=["contig", "start"], inplace=True)
+		print("done sorting trf")
+		
 		# insert original contig names
-		trf["contig"].replace(convert, inplace=True)
+		#trf["contig"].replace(convert, inplace=True) # This function is very slow for no good reason.
+		trf["contig"] = trf["contig"].map(convert.get)
+		print("done converting trf")
+		
 		trf.to_csv(output["trf"], sep="\t", index=False)
+		print("done writing trf")
 
-		# wrtie to a bed file
+		#
+		# PARSE REPEAT MASKER
+		#
+		
+		rms = []
+		for frm in input["rm"]:
+			sys.stderr.write(frm + "\n" )
+			rms.append( pd.read_csv(frm, delim_whitespace=True, header=None, skiprows=[0,1,2], comment="*",
+				names = ["score", "div", "del", "ins", "contig", "start", "end",
+					 "q_left", "strand", "repeat", "class", "r_st", "r_en", "r_left", "id"]) )
+		
+		rm = pd.concat(rms, ignore_index=True)
+		print(rm.shape )
+
+		rm.sort_values(by=["contig", "start"], inplace=True)
+		print("done sorting rm")
+
+		# insert original contig names
+		#rm["contig"].replace(convert, inplace=True)
+		rm["contig"] = rm["contig"].map(convert.get)
+		print("done converting rm")
+		
+		rm.to_csv(output["rm"], sep="\t", index=False)
+		print("done writing rm")
+	
+
+		#
+		# WRITE TO BED
+		#
 		bed = ["contig", "start", "end"]
 		cm = pd.concat([rm[bed], trf[bed]], ignore_index=True)
 		cm.to_csv(output["crtmp"], sep="\t", header=False, index=False)
