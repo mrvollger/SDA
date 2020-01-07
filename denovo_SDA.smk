@@ -66,7 +66,6 @@ IDS = list(range(len(READS ) ) )
 # geting ready to run TRF and RM by splitting up the genome into multiple parts to run seperatly 
 #
 splitSize = 200
-splitSize = 60
 FAI = REF + ".fai"
 recs = open(FAI).readlines()
 if(splitSize > len(recs)):
@@ -213,6 +212,7 @@ rule bam_to_coverage:
 	input:
 		bam=rules.index_bam.input.bam,
 		#bai=rules.index_bam.output.bai,
+		genome=FAI,
 		regions=rules.fai_to_bed.output.regions,
 	output:
 		cov=tempd("{DIR}/coverage/{PRE}.coverage.bed"),
@@ -221,7 +221,7 @@ rule bam_to_coverage:
 	threads: 1
 	shell:"""
 # get coverage and then sort by contig and then pos
-bedtools coverage -bed -mean -sorted -a {input.regions} -b {input.bam} | \
+bedtools coverage -bed -mean -sorted -g {input.genome} -a {input.regions} -b {input.bam} | \
 	sort -k 1,1 -k2,2n > {output.cov}
 """
 
@@ -309,7 +309,8 @@ rule TRF:
 		param = ["2", "7", "7", "80", "10", "50", "2000"]
 		trfparam = " ".join(param)
 		trfout = ".".join(param)
-		shell("""{TRF} {fasta} {trfparam} -h -ngs > {output.trf} """ )
+		# adding max runtime to trf because sometimes it stalls forever. 
+		shell("""timeout {MAX_TIME} {TRF} {fasta} {trfparam} -h -ngs > {output.trf} || touch {output.trf} """ )
 
 
 
