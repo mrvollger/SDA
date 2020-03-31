@@ -283,7 +283,7 @@ rule RepeatMasker:
 		shell("""		
 		RepeatMasker \
 			-species {RM_DB} \
-			-e wublast \
+			-e ncbi \
 			-dir {rmdir} \
 			-pa {threads} \
 			{input.split}
