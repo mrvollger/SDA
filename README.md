@@ -13,7 +13,7 @@ Once that is done, create `env_sda.sh` so that it adds conda to your path.
 In addition gcc, cmake, and RepeatMasker must already be in your path or added to your path in `env_sda.sh`.
 	Notes:
 		1) To install `Racon` cmake must be avalible.
-		2) To run `SDA denovo` there must be a version of `RepeatMasker` with `wublast`.
+		2) To run `SDA denovo` there must be a version of `RepeatMasker` with the `ncbi` engine avalible.
 		3) We suggest using `gcc=6.4.0`.
  
 Here is an example of what your `env_sda.sh` might look like:
@@ -185,6 +185,35 @@ optional arguments:
 There is a test case for this snakemake but it is rather large, 20Gb of data. To download it execute the following:
 ```
 make TestCases/GenomeTest/ref.fasta
+```
+
+
+## Run SDA to identify regions of collapse ##
+
+Run SDA only to the point of identifying regions of collapse (example). 
+```
+./SDA denovo \
+        --drmaa " -l mfree={resources.mem}G -pe serial {threads} -l h_rt=128:00:00 -V -cwd -S /bin/bash " \
+        --threads 400 \
+        --platform ccs \
+        --fofn /net/eichler/vol27/projects/sequence_data/nobackups/human/CHM13/PacBioHiFi/20_kbp_insert_hifi_beta/fastq.fofn \
+        --ref ref.fasta \
+		--pre sda  \
+        sda_out/coverage/sda.collapses.bed
+```
+
+
+
+There are two collapse files output by SDA both with the following format:
+```
+contig	start	end	mean_coverage	median_coverage	#_of_bases_with_common_repeat_elements	length
+```
+The file named like `*.collapses.with.cm.bed` has all collapses regardless of common repeat elements. The file named `*.collapses.bed` will only have collapses with less than 75% common repeat element. 
+
+
+The following commands makes a table with collapsed and expanded bases counted. 
+```
+./scripts/count_collapse.py --coverage 25 sda_out/coverage/*collapses.*.bed
 ```
 
 ### Please Cite ###
