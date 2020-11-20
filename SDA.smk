@@ -45,6 +45,8 @@ MINASMLENGTH=10000
 STD = np.sqrt(COV)
 MINCOV = int( max(COV - 4*STD, COV/2.0) )
 MAXCOV = int( COV + 1*STD )
+if("mincov" in config): MINCOV = config["mincov"]
+if("maxcov" in config): MAXCOV = config["maxcov"]
 MINTOTAL = int( 2*COV - 3*STD )
 MINREADS = int(MINCOV/2.0)
 
