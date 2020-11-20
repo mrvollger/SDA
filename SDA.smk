@@ -799,7 +799,6 @@ rule final_rule:
 		png = rules.nucplot.output.png, 	
 		cuts = rules.run_cc.output.cuts,	
 		png2 = rules.nucplot_cc.output.png, 
-		pdf = rules.gephi.output.pdf,
 		comps = "{DIR}/CC/{PRE}.mi.comps.txt",
 	output:
 		done="{DIR}/{PRE}.done",

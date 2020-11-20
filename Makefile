@@ -69,7 +69,7 @@ externalRepos/racon-v1.4.5/build/bin/racon:
 	cd externalRepos && \
 	wget https://github.com/lbcb-sci/racon/releases/download/1.4.5/racon-v1.4.5.tar.gz && \
 	tar -xvzf racon-v1.4.5.tar.gz && \
-	cd racon-v1.4.5 && mkdir build && cd build && \
+	cd racon-v1.4.5 && mkdir -p build && cd build && \
 	cmake -DCMAKE_BUILD_TYPE=Release .. && make && \
 	cd ../../ && rm racon-v1.4.5.tar.gz 
 
@@ -93,6 +93,10 @@ bamToFreq: externalRepos/BamToFreq.cpp externalRepos/htslib-1.9/libhts.so
 	source env_sda.sh && \
 	g++ -I externalRepos/htslib-1.9 $(CCOPTS) $^ -o $@  -L externalRepos/htslib-1.9 -lhts -lpthread -lz -Wl,-rpath,$(PWD)/externalRepos/htslib-1.9
 
+#
+# only make the dependacies required for the collapse analysis. 
+#
+collapse: envs/python3.done
 
 #
 # Make the test cases
