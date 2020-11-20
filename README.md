@@ -7,10 +7,12 @@ git clone --recurse-submodules git://github.com/mrvollger/SDA.git
 ```
 
 # Install: #
-The requirements for SDA are taken care of by two custom conda environments (sda-python-2 and sda-python-3). In order to run SDA, you must already have anaconda 3 installed on your system and you must be able to create conda environments. 
+The requirements for SDA are taken care of by two custom conda environments (sda-python-2 and sda-python-3).
+In order to run SDA, you must already have anaconda 3 installed on your system and you must be able to create conda environments. 
 
 Once that is done, create `env_sda.sh` so that it adds conda to your path.  
-In addition gcc, cmake, and RepeatMasker must already be in your path or added to your path in `env_sda.sh`.
+Additionally, RepeatMasker, gcc, and cmake are not installed for you via conda and must be loaded in `env_sda.sh`.
+Finally, if for example RepeatMasker relies on a perl module you must also add that to `env_sda.sh`
 	Notes:
 		1) To install `Racon` cmake must be avalible.
 		2) To run `SDA denovo` there must be a version of `RepeatMasker` with the `ncbi` engine avalible.
@@ -40,8 +42,6 @@ Once `env_sda.sh` has been created the `Makefile` can be run with:
 make
 ```
 Several people have run into an error with readToSNVList if it is complied with gcc 8.x so please complie with gcc 6.4.0. 
-
-
 
 
 # Run: #
@@ -126,20 +126,20 @@ optional arguments:
 ## Run "SDA denovo" ##
 ```
 ./SDA denovo -h
-usage:
-                SDA denovo --fofn <input.fofn> [<args>]
-                For allowing cluster submission please add --cluster or --drmaa, these areguments are passed directly to snakemake.
-                The cluster/drmaa string must include these string: {threads} and {resources.mem}G . Below is an example using drmaa and SGE:
+usage: 
+		SDA denovo --input <input.(fofn|bam)> [<args>]
+		For allowing cluster submission please add --cluster or --drmaa, these areguments are passed directly to snakemake. 
+		The cluster/drmaa string must include these string: {threads} and {resources.mem}G . Below is an example using drmaa and SGE:
+	
+	--drmaa " -l mfree={resources.mem}G -pe serial {threads} -l h_rt=128:00:00 -V -cwd -S /bin/bash " 
 
-        --drmaa " -l mfree={resources.mem}G -pe serial {threads} -l h_rt=128:00:00 -V -cwd -S /bin/bash "
-
-
-SDA denovo
+SDA {mode.command}
 
 optional arguments:
   -h, --help            show this help message and exit
-  --fofn FOFN           file of file names to align to the genome (default:
-                        None)
+  --input INPUT         file of file names to align to the genome, or a bam
+                        containg reads aligned to the genome (softclippled
+                        recomended). (default: None)
   --species SPECIES     species name of data base for repeat makser (default:
                         human)
   --cluster CLUSTER     cluster configuration line for snakemake (default:
@@ -180,6 +180,7 @@ optional arguments:
                         (default: 9000)
   --debug               If set the temporary files are not deleted. (default:
                         False)
+
 ```
 
 There is a test case for this snakemake but it is rather large, 20Gb of data. To download it execute the following:
