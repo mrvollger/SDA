@@ -32,7 +32,7 @@ mode = parser.parse_args(sys.argv[1:2])
 
 if(mode.command == "denovo"):
 	parser = argparse.ArgumentParser(description="SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter, usage='''
-		SDA denovo --fofn <input.fofn> [<args>]
+		SDA denovo --input <input.(fofn|bam)> [<args>]
 		For allowing cluster submission please add --cluster or --drmaa, these areguments are passed directly to snakemake. 
 		The cluster/drmaa string must include these string: {threads} and {resources.mem}G . Below is an example using drmaa and SGE:
 	
@@ -43,7 +43,8 @@ if(mode.command == "denovo"):
 	#parser.add_argument("--drmaa", help=""" A string that specifies a drmma config for snakemake to use.
 	#Must include {threads}, {resources.mem} and {log} (for sdterr and stdout log files). See default for a functioning SGE example.""",
 	#default = '" -l mfree={resources.mem} -pe serial {threads} -e {log} -o {log} -l h_rt=128:00:00 -V -cwd -S /bin/bash "')
-	parser.add_argument("--fofn", help="file of file names to align to the genome")
+	parser.add_argument("--input", 
+                     help="file of file names to align to the genome, or a bam containg reads aligned to the genome (softclippled recomended).")
 	parser.add_argument("--species", help="species name of data base for repeat makser", default="human")
 	parser.add_argument("--cluster", help="cluster configuration line for snakemake")
 	parser.add_argument("--drmaa", help="drmaa configuration line for snakemake")
@@ -80,8 +81,8 @@ args, snakeargs = parser.parse_known_args(sys.argv[2:])
 # check for required inputs 
 if( mode.command == "collapse" and not args.coverage ):
 	parser.error('No coverage specified, add --coverage {\d+}')
-if( mode.command == "denovo" and not args.fofn ):
-	parser.error('No fofn with reads specified, add --fofn')
+if( mode.command == "denovo" and not args.input):
+	parser.error('No input with reads specified, add --input with fofn or bam')
 if(not os.path.exists(args.ref + ".fai")):
 	parser.error(f'{args.ref} must be indexed, try samtools faidx {args.ref}')
 
@@ -109,14 +110,18 @@ cmd=f'''cd {DIR}/envs && source {DIR}/envs/env_python3.sh && cd {CWD} \
 
 # add cluster config arrguments
 if(mode.command == "denovo"):
-	LOG = os.path.abspath( os.path.join(args.dir, "logs") )
-	if(not os.path.exists(LOG)):
-		os.makedirs(LOG)
+    LOG = os.path.abspath( os.path.join(args.dir, "logs") )
+    if(not os.path.exists(LOG)):
+        os.makedirs(LOG)
 
-	if( args.drmaa ):
-		cmd += f' --drmaa " {args.drmaa} " --drmaa-log-dir {LOG} '
-	elif( args.cluster ):
-		cmd += f' --cluster " {args.cluster} -j y -o {LOG} " '
+    if( args.drmaa ):
+        cmd += f' --drmaa " {args.drmaa} " --drmaa-log-dir {LOG} '
+    elif( args.cluster ):
+        if( 'sbatch' in args.cluster ):
+            cmd += f' --cluster " {args.cluster} --output {LOG} " '
+        else:
+            cmd += f' --cluster " {args.cluster} -j y -o {LOG} " '
+
 		
 
 # unknown paramters will be passed to snakemake 

@@ -35,7 +35,16 @@ else:
 #
 # script locations and configurations 
 #
-FOFN = config["fofn"]
+INPUT = config["input"]
+BAM=False
+if(INPUT[-4:]==".bam"):
+  BAM=INPUT
+  assert os.path.exists(BAM+".bai"), "Input bam must be indexed!"
+else:
+  FOFN = INPUT
+  READS =  [ line.strip() for line in open(FOFN).readlines() ] 
+  IDS = list(range(len(READS ) ) )
+
 PLAT = config["platform"].upper()
 REF = os.path.abspath( config["ref"] )
 MINALN = config["minaln"] 
@@ -59,14 +68,23 @@ MINCOLLEN = 15000
 # maximum percentage of a collapse that can be common repeat 
 MAXCR = 75
 
-READS =  [ line.strip() for line in open(FOFN).readlines() ] 
-IDS = list(range(len(READS ) ) )
+# get the reference size
+REF_GB=os.stat(REF).st_size/(1024*1024*1024)
+I_G=4
+if(REF_GB > 3.5):
+  sys.stderr.write("You have a large reference! Increasing mem for alignment.")
+  I_G = int(REF_GB) + 1
+
+
+# make sure index is yonger
+FAI = REF + ".fai"
+if os.path.getmtime(FAI) < os.path.getmtime(REF):
+  shell("samtools faidx {REF}")
 
 #
 # geting ready to run TRF and RM by splitting up the genome into multiple parts to run seperatly 
 #
 splitSize = 200
-FAI = REF + ".fai"
 recs = open(FAI).readlines()
 if(splitSize > len(recs)):
 	splitSize = len(recs)
@@ -108,8 +126,12 @@ rule all:
 ###################################################################################
 
 def get_reads(wildcards):
-	ID = int(str(wildcards.ID))
-	return(READS[ID])
+  ID = int(str(wildcards.ID))
+  f = READS[ID]
+  if PLAT in ["ONT"]:
+    sys.stderr.write("Testing input type\n")
+    assert re.match(".+\.(fa|fasta|fq|fastq)(\.gz)?", f), f +" does not match: .+\.(fa|fq|fasta|fastq)(\.gz)?"
+  return(f)
 
 if(PLAT in ["CCS", "SUBREAD"] ):
 	rule pbmm2:
@@ -119,7 +141,7 @@ if(PLAT in ["CCS", "SUBREAD"] ):
 		output:
 			tempd("{DIR}/{PRE}.{ID}.reads.bam")
 		resources:
-			mem=6
+			mem=4+I_G
 		threads: 8
 		shell: """ 
 # SUBREAD gives bettern alignmetns for CCS reads than CCS
@@ -131,7 +153,7 @@ pbmm2 align -j {threads} \
 	samtools sort -@ {threads} -m 4G -T {TMPDIR}/pbmm2 -o {output}
 """
 
-elif(PLAT in ["ONT"] ): 
+elif( PLAT in ["ONT"] ): 
 	rule minimap2:
 		input:
 			reads = get_reads,
@@ -139,74 +161,87 @@ elif(PLAT in ["ONT"] ):
 		output:
 			tempd("{DIR}/{PRE}.{ID}.reads.bam")
 		resources:
-			mem=6
+			mem=4+I_G
 		threads: 8
 		shell:"""
-samtools fasta {input.reads} | \
-	minimap2 \
+minimap2 \
+  -I {I_G}G \
 	-ax map-ont \
 	--eqx -L \
 	-R '@RG\\tID:MINIMAP\\tSM:FAKE_SAMPLE\\tPL:ONT' \
 	-t {threads} \
 	-m {MINALN} -r {BANDWIDTH} \
-	{input.ref} /dev/stdin | \
+	{input.ref} {input.reads} | \
 	samtools view -u -F 2308 - | \
-	samtools sort -@ {threads} -m 4G -T {TMPDIR}/pbmm2 -o {output}
-"""
+	samtools sort -@ {threads} -m 4G -T {TMPDIR}/pbmm2 -o {output}"""
+
 else:
 	sys.stderr.write("Platform {} not recongnized!\n".format(PLAT))
 
-rule merge_bam:
-	input:
-		bams = expand("{{DIR}}/{{PRE}}.{ID}.reads.bam", ID=IDS),
-	output:
-		bam = "{DIR}/{PRE}.reads.bam",
-	resources:
-		mem=4
-	threads: 12
-	shell:"""
-samtools merge -@ {threads} {output.bam} {input.bams}
-"""	
+if(BAM):
+  rule merge_bam:
+    input:
+      bam = BAM,
+    output:
+      bam = "{DIR}/{PRE}.reads.bam",
+    resources:
+      mem=1
+    threads: 1
+    shell:"""
+  ln -s $(readlink -f {input.bam}) {output.bam}
+  """	
+  rule index_bam:
+    input:
+      bam=rules.merge_bam.output.bam,
+      bai=BAM+".bai",
+    output:
+      bai="{DIR}/{PRE}.reads.bam.bai"
+    resources:
+      mem=1
+    threads: 1
+    shell:"""
+  ln -s $(readlink -f {input.bai}) {output.bai}
+  """
+else:
+  rule merge_bam:
+    input:
+      bams = expand("{{DIR}}/{{PRE}}.{ID}.reads.bam", ID=IDS),
+    output:
+      bam = "{DIR}/{PRE}.reads.bam",
+    resources:
+      mem=4
+    threads: 12
+    shell:"""
+  samtools merge -@ {threads} {output.bam} {input.bams}
+  """	
 
-rule index_bam:
-	input:
-		bam=rules.merge_bam.output.bam,
-	output:
-		bai="{DIR}/{PRE}.reads.bam.bai"
-	resources:
-		mem=16
-	threads: 1
-	shell:"""
-samtools index {input}
-"""
+  rule index_bam:
+    input:
+      bam=rules.merge_bam.output.bam,
+    output:
+      bai="{DIR}/{PRE}.reads.bam.bai"
+    resources:
+      mem=16
+    threads: 1
+    shell:"""
+  samtools index {input}
+  """
 
 #
 # this rule creats a bed file that is incremented by 1000 for every contig
 # these will be the feautes upon which we calculate depth wtih bedtools
 #
 rule fai_to_bed:
-	input:	
-		asmfai= REF + ".fai",
-	output:
-		regions=tempd("{DIR}/coverage/{PRE}.regions.bed"),
-	resources:
-		mem=16
-	threads: 1
-	run:
-		fai = open(input["asmfai"])
-		window = WINDOW
-		out = ""
-		for line in fai:
-			token = line.strip().split("\t")
-			length = int(token[1])
-			contig = token[0]
-			for start in range(0, length, window):
-				end = start + window -1 
-				if(end > length):
-					end = length 
-				out += "{}\t{}\t{}\n".format(contig, start, end)
-		open(output["regions"], "w+").write(out)
-
+  input:	
+    asmfai= REF + ".fai",
+  output:
+    regions=tempd("{DIR}/coverage/{PRE}.regions.bed"),
+  resources:
+    mem=16
+  threads: 1
+  shell:"""
+bedtools makewindows -g {input.asmfai} -w {WINDOW} > {output.regions}
+"""
 
 rule bam_to_coverage:
 	input:
@@ -221,7 +256,9 @@ rule bam_to_coverage:
 	threads: 1
 	shell:"""
 # get coverage and then sort by contig and then pos
-bedtools coverage -bed -mean -sorted -g {input.genome} -a {input.regions} -b {input.bam} | \
+bedtools coverage -bed -mean -sorted \
+           -g {input.genome} -a {input.regions} \
+           -b <( samtools view -b -F 2308 {input.bam} ) | \
 	sort -k 1,1 -k2,2n > {output.cov}
 """
 
@@ -267,28 +304,38 @@ rule split_ref:
 # Run RepeatMasker
 #
 rule RepeatMasker:
-	input:
-		split = "{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta",
-	output:
-		out = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.out"),
-		cat = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.cat"),
-		ref = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.ref"),
-		tbl = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.tbl"),
-		msk = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.masked"),
-	resources:
-		mem=8,
-	threads:4
-	run:
-		rmdir = os.path.dirname(input["split"])
-		shell("""		
-		RepeatMasker \
-			-species {RM_DB} \
-			-e ncbi \
-			-dir {rmdir} \
-			-pa {threads} \
-			{input.split}
+  input:
+    split = "{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta",
+  output:
+    out = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.out"),
+    tbl = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.tbl"),
+    #cat = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.cat"),
+    #ref = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.ref"),
+    #msk = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.masked"),
+  log:
+    "{DIR}/logs/RepeatMasker.{PRE}.ref.{FRAC}.stdout.log"
+  resources:
+    mem=8,
+  threads:4
+  run:
+    rmdir = os.path.dirname(input["split"])
+    rm_lib = f"-species {RM_DB}"
+    if( os.path.exists(RM_DB)):
+      rm_lib = f"-lib {RM_DB}"
+    shell("""		
+RepeatMasker \
+    {rm_lib} \
+    -e ncbi \
+    -dir {rmdir} \
+    -pa {threads} \
+    {input.split} > {log}
 
-		""")
+# clean outputfiles that only sometimes exist depending on RM version
+rm -f \
+  {wildcards.DIR}/common_repeats/{wildcards.PRE}.ref.{wildcards.FRAC}.fasta.masked* \
+  {wildcards.DIR}/common_repeats/{wildcards.PRE}.ref.{wildcards.FRAC}.fasta.cat* \
+  {wildcards.DIR}/common_repeats/{wildcards.PRE}.ref.{wildcards.FRAC}.fasta.ref* 
+    """)
 
 #
 # Run TRF
@@ -416,7 +463,36 @@ rule merge_trf_rm:
 #             FIND HIGH COVERAGE REGIONS                                          #
 #                                                                                 #
 ###################################################################################
+rule simple_high_coverage_regions:
+    input:
+        cov = rules.bam_to_coverage.output.cov,
+        asmfai= REF + ".fai",
+    output:
+        stats = "{DIR}/coverage/{PRE}.simple.coverage.stats",
+        collapse = "{DIR}/coverage/{PRE}.simple.collapses.bed",
+    resources:
+        mem=16,
+    threads:1
+    run:
+        bed = pd.read_csv( input["cov"], sep = "\t", header=None, names=['contig', 'start', 'end',"coverage"])
+# I want to eliminte the really low or really high coverage things because they are probably
+# not assembled correctly and then assecess what the mean and standard deviation is
+        top = bed.coverage.quantile(.90)
+        bot = bed.coverage.quantile(.10)
 
+# save stats like mean coverage 
+        stats = bed["coverage"][ (bed.coverage < top) & ( bed.coverage > bot) ].describe()
+        out = "mean_coverage\tstd_coverage\n{}\t{}\n".format(stats["mean"], stats["std"])
+        open(output["stats"], "w+").write(out)
+
+# filter for high coverage regsion
+        MINCOV = stats["mean"]  + 3 * np.sqrt(stats["mean"])
+        shell("""
+awk '{{ if ($4 > {MINCOV}) print;}}' {input.cov} \
+    | bedtools merge -d 10 -c 4,4 -o mean,median \
+    | awk '{{ if ($3-$2 > {MINCOLLEN}) {{ print $0"\t"$3-$2;}} }}' > {output.collapse} """)
+
+		  
 
 rule count_cm_per_window:
 	input:
@@ -571,7 +647,7 @@ rule la_bam:
 		mem=16,
 	threads:1
 	shell:"""
-samtools view -b {input.bam} '{params.rgn}' > {output.bam}
+samtools view -F 2308 -b {input.bam} '{params.rgn}' > {output.bam}
 """
 
 def get_bams(wildcards):
