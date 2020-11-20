@@ -31,7 +31,7 @@ mode = parser.parse_args(sys.argv[1:2])
 
 
 if(mode.command == "denovo"):
-	parser = argparse.ArgumentParser(description="SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter, usage='''
+	parser = argparse.ArgumentParser(description=f"SDA {mode.command}", formatter_class=argparse.ArgumentDefaultsHelpFormatter, usage='''
 		SDA denovo --input <input.(fofn|bam)> [<args>]
 		For allowing cluster submission please add --cluster or --drmaa, these areguments are passed directly to snakemake. 
 		The cluster/drmaa string must include these string: {threads} and {resources.mem}G . Below is an example using drmaa and SGE:
@@ -62,6 +62,8 @@ parser.add_argument("-t", "--threads", help="Threads for the snakemake (collapse
 parser.add_argument("-d", "--dir", help="directory for output files", default="sda_out")
 parser.add_argument("-p","--prefix", help="prefix for output files", default="sda")
 parser.add_argument("--minaln", help="Minimum alignment length", default=3000 , type=int)
+parser.add_argument("--mincov", help="Set min PSV coverage instead of defualt calculation", default=None, type=int)
+parser.add_argument("--maxcov", help="Set max PSV coverage instead of defualt calculation", default=None, type=int)
 parser.add_argument("--bandwidth", help="bandwidth used in alignment", default=50000 , type=int)
 parser.add_argument("--iterations", help="Number of times to run CC", default=10 , type=int)
 parser.add_argument("--assemblers", help="""
@@ -133,9 +135,10 @@ if(len(snakeargs) > 0):
 # add configuration options from argprase 
 cmd += " --config "
 for arg in vars(args):
-	if(arg not in ["threads", "cluster", "drmaa"] ):
-		val = getattr(args, arg)
-		cmd += f'{arg}={val} '
+    if(arg not in ["threads", "cluster", "drmaa"] ):
+        val = getattr(args, arg)
+        if(val is not None):
+            cmd += f'{arg}={val} '
 
 	
 #if( mode.command == "denovo" ):

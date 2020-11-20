@@ -3,7 +3,7 @@
 
 # Download: #
 ```
-git clone --recurse-submodules git://github.com/mrvollger/SDA.git
+git clone --recurse-submodules https://github.com/mrvollger/SDA.git
 ```
 
 # Install: #
@@ -29,7 +29,7 @@ module load modules modules-init modules-gs/prod modules-eichler
 module load gcc/6.4.0
 module load cmake/3.14.3
 module load perl/5.14.2
-module load RepeatMasker/3.3.0
+module load RepeatMasker/4.1.0
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
@@ -133,7 +133,7 @@ usage:
 	
 	--drmaa " -l mfree={resources.mem}G -pe serial {threads} -l h_rt=128:00:00 -V -cwd -S /bin/bash " 
 
-SDA {mode.command}
+SDA denovo
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -190,6 +190,15 @@ make TestCases/GenomeTest/ref.fasta
 
 
 ## Run SDA to identify regions of collapse ##
+If you only need to run SDA for collapse analysis you can do a simplified install by first creating `env_sda.sh` which must add RepeatMasker (version 4.1.0) to your path and activate conda if it is not already in your default env, e.g.: 
+```
+PATH=$PATH:/path/to/your/repeat/masker/bin
+```
+
+You can then use make to install the other dependencies:
+```
+make collapse 
+```
 
 Run SDA only to the point of identifying regions of collapse (example). 
 ```
@@ -216,6 +225,8 @@ The following commands makes a table with collapsed and expanded bases counted.
 ```
 ./scripts/count_collapse.py --coverage 25 sda_out/coverage/*collapses.*.bed
 ```
+### Note on HiFi reads ###
+While SDA does now have presets for assembling with HiFi data it has not been extensively optimized for HiFi. I recommend using HiCanu (doi:10.1101/2020.03.14.992248) for assembling highly identical duplicates with high accuracy long reads. 
 
 ### Please Cite ###
 Vollger, M. R. et al. Long-read sequence and assembly of segmental duplications. Nature Methods (2018). doi:10.1038/s41592-018-0236-3

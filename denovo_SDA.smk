@@ -357,7 +357,7 @@ rule TRF:
 		trfparam = " ".join(param)
 		trfout = ".".join(param)
 		# adding max runtime to trf because sometimes it stalls forever. 
-		shell("""timeout {MAX_TIME} {TRF} {fasta} {trfparam} -h -ngs > {output.trf} || touch {output.trf} """ )
+		shell("""timeout {MAX_TIME} {TRF} {fasta} {trfparam} -l 25 -h -ngs > {output.trf} || touch {output.trf} """ )
 
 
 
