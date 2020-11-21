@@ -120,7 +120,7 @@ if(mode.command == "denovo"):
         cmd += f' --drmaa " {args.drmaa} " --drmaa-log-dir {LOG} '
     elif( args.cluster ):
         if( 'sbatch' in args.cluster ):
-            cmd += f' --cluster " {args.cluster} --output {LOG} " '
+            cmd += f' --cluster " {args.cluster} --output {LOG}/slurm-%j.out --error {LOG}/slurm-%j.err" '
         else:
             cmd += f' --cluster " {args.cluster} -j y -o {LOG} " '
 
