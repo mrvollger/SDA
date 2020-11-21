@@ -41,6 +41,7 @@ if(INPUT[-4:]==".bam"):
   BAM=INPUT
   assert os.path.exists(BAM+".bai"), "Input bam must be indexed!"
 else:
+  assert INPUT[-5:] == ".fofn", "Expected bam or fofn in the input arg."
   FOFN = INPUT
   READS =  [ line.strip() for line in open(FOFN).readlines() ] 
   IDS = list(range(len(READS ) ) )
