@@ -150,7 +150,7 @@ pbmm2 align -j {threads} \
 	--sample FAKE_SAMPLE \
 	{input.ref} {input.reads} | \
 	samtools view -u -F 2308 - | \
-	samtools sort -@ {threads} -m 4G -T {TMPDIR}/pbmm2 -o {output}
+	samtools sort -@ {threads} -m 4G -T {TMPDIR}/pbmm2_{wildcards.ID}_ -o {output}
 """
 
 elif( PLAT in ["ONT"] ): 
@@ -173,7 +173,7 @@ minimap2 \
 	-m {MINALN} -r {BANDWIDTH} \
 	{input.ref} {input.reads} | \
 	samtools view -u -F 2308 - | \
-	samtools sort -@ {threads} -m 4G -T {TMPDIR}/pbmm2 -o {output}"""
+	samtools sort -@ {threads} -m 4G -T {TMPDIR}/pbmm2_{wildcards.ID}_ -o {output}"""
 
 else:
 	sys.stderr.write("Platform {} not recongnized!\n".format(PLAT))
