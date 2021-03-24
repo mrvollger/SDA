@@ -310,9 +310,9 @@ rule RepeatMasker:
   output:
     out = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.out"),
     tbl = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.tbl"),
-    #cat = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.cat"),
-    #ref = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.ref"),
-    #msk = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.masked"),
+    cat = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.cat"),
+    ref = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.ref"),
+    msk = tempd("{DIR}/common_repeats/{PRE}.ref.{FRAC}.fasta.masked"),
   log:
     "{DIR}/logs/RepeatMasker.{PRE}.ref.{FRAC}.stdout.log"
   resources:
@@ -321,22 +321,19 @@ rule RepeatMasker:
   run:
     rmdir = os.path.dirname(input["split"])
     rm_lib = f"-species {RM_DB}"
-    if( os.path.exists(RM_DB)):
+    if( os.path.exists(RM_DB) ):
       rm_lib = f"-lib {RM_DB}"
-    shell("""		
-RepeatMasker \
-    {rm_lib} \
-    -e ncbi \
-    -dir {rmdir} \
-    -pa {threads} \
-    {input.split} > {log}
+    shell("""RepeatMasker \
+                {rm_lib} \
+                -e ncbi \
+                -dir {rmdir} \
+                -pa {threads} \
+                {input.split} > {log}""")
+    
+    # touch output in case of missing output due to lack of 
+    # common repeat elements
+    shell("touch {output}")
 
-# clean outputfiles that only sometimes exist depending on RM version
-rm -f \
-  {wildcards.DIR}/common_repeats/{wildcards.PRE}.ref.{wildcards.FRAC}.fasta.masked* \
-  {wildcards.DIR}/common_repeats/{wildcards.PRE}.ref.{wildcards.FRAC}.fasta.cat* \
-  {wildcards.DIR}/common_repeats/{wildcards.PRE}.ref.{wildcards.FRAC}.fasta.ref* 
-    """)
 
 #
 # Run TRF
