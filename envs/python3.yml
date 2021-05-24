@@ -25,4 +25,5 @@ dependencies:
   - matplotlib=2.2.2
   - openjdk=8.0.121
   - python=3.6.3
+  - trf
   - pip:
