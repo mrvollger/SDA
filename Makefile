@@ -41,13 +41,13 @@ scripts/readToSNVList: externalRepos/pbgreedyphase/readToSNVList
 envs/python2.done: 
 	source env_sda.sh && \
 	mkdir -p envs && \
-	conda env create --force -f envs/python2.yml --prefix $(PWD)/envs/sda-python-2 && \
+	mamba env create --force -f envs/python2.yml --prefix $(PWD)/envs/sda-python-2 && \
 	touch envs/python2.done
 
 envs/python3.done:
 	source env_sda.sh && \
 	mkdir -p envs && \
-	conda env create --force -f envs/python3.yml --prefix $(PWD)/envs/sda-python-3 && \
+	mamba env create --force -f envs/python3.yml --prefix $(PWD)/envs/sda-python-3 && \
 	touch envs/python3.done
 
 
