@@ -253,14 +253,14 @@ rule bam_to_coverage:
 	output:
 		cov=tempd("{DIR}/coverage/{PRE}.coverage.bed"),
 	resources:
-		mem=16
-	threads: 1
+		mem=8
+	threads: 4
 	shell:"""
 # get coverage and then sort by contig and then pos
 bedtools coverage -bed -mean -sorted \
            -g {input.genome} -a {input.regions} \
-           -b <( samtools view -b -F 2308 {input.bam} ) | \
-	sort -k 1,1 -k2,2n > {output.cov}
+           -b <( samtools view -@ {threads} -b -F 2308 {input.bam} | bedtools bamtobed -i -) \
+  | sort -k 1,1 -k2,2n > {output.cov}
 """
 
 
