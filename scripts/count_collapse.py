@@ -29,10 +29,11 @@ for f in args.infiles:
 	
 
 data = pd.DataFrame(data, columns=colnames) 
-
 data.sort_values(by=["Expanded_bp", "Collapsed_bp"], inplace=True)
+print(data, file=sys.stderr)
 
-pd.options.display.float_format = '{:.2f}'.format
-print(data)
 
+#pd.options.display.float_format = '{:.2f}'.format
+#print(data)
+data.to_csv(sys.stdout, sep="\t",index=False)
 

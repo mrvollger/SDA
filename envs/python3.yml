@@ -6,7 +6,7 @@ channels:
 dependencies:
   - biopython=1.70
   - bcftools=1.9
-  - bedtools=2.27.1
+  - bedtools=2.30.0
   - blasr=5.3.3
   - miniasm=0.3
   - minimap2=2.17
