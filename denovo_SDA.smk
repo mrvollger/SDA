@@ -503,7 +503,7 @@ rule count_cm_per_window:
 	threads:1
 	shell:"""
 # count number of overlaping bases with cm | eliminate extra colums | merge overlapping entries and calculate sum 
-bedtools intersect -a {input.cov} -b {input.cr} -wao | cut -f 1,2,3,4,8 | bedtools merge -c 4,5 -o mean,sum > {output.cov} 
+bedtools intersect -a {input.cov} -b {input.cr} -wao | cut -f 1,2,3,4,8 | bedtools merge -d -1 -c 4,5 -o mean,sum > {output.cov} 
 # final output:
 # contig\tstart\tend\tcoverage\tcommon repeat bases
 """
