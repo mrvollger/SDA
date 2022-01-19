@@ -1,5 +1,5 @@
 # Segmental Duplication Assembler (SDA)
-
+[![DOI](https://zenodo.org/badge/101452926.svg)](https://zenodo.org/badge/latestdoi/101452926)
 
 # Download: #
 ```
