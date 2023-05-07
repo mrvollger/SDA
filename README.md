@@ -1,6 +1,9 @@
 # Segmental Duplication Assembler (SDA)
 [![DOI](https://zenodo.org/badge/101452926.svg)](https://zenodo.org/badge/latestdoi/101452926)
 
+# Now Archived  
+SDA is no longer maintained and should not be used. SDA was designed for low quality PacBio (CLR) and ONT long reads, both of which are now substantially higher quality allowing standard assembly tools like Flye, HiCanu, and hifiasm to outperform any results previously possible with SDA.
+
 # Download: #
 ```
 git clone --recurse-submodules https://github.com/mrvollger/SDA.git
@@ -225,8 +228,7 @@ The following commands makes a table with collapsed and expanded bases counted.
 ```
 ./scripts/count_collapse.py --coverage 25 sda_out/coverage/*collapses.*.bed
 ```
-### Note on HiFi reads ###
-While SDA does now have presets for assembling with HiFi data it has not been extensively optimized for HiFi. I recommend using HiCanu (doi:10.1101/2020.03.14.992248) for assembling highly identical duplicates with high accuracy long reads. 
+
 
 ### Please Cite ###
 Vollger, M. R. et al. Long-read sequence and assembly of segmental duplications. Nature Methods (2018). doi:10.1038/s41592-018-0236-3
