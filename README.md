@@ -2,7 +2,7 @@
 [![DOI](https://zenodo.org/badge/101452926.svg)](https://zenodo.org/badge/latestdoi/101452926)
 
 # SDA is now Archived  
-*SDA is no longer maintained and should not be used. SDA was designed for low quality PacBio (CLR) and ONT long reads, both of which are now substantially higher quality allowing standard assembly tools like Flye, HiCanu, and hifiasm to outperform any results previously possible with SDA.*
+**SDA is no longer maintained and should not be used. SDA was designed for low quality PacBio (CLR) and ONT long reads, both of which are now substantially higher quality allowing standard assembly tools like Flye, HiCanu, and hifiasm to outperform any results previously possible with SDA.**
 
 # Download: #
 ```
